@@ -1,0 +1,79 @@
+"""Integration tests for FastAPI backend and demo execution."""
+
+import time
+import pytest
+from fastapi.testclient import TestClient
+from backend.app.main import app
+
+client = TestClient(app)
+
+
+def test_root_endpoint():
+    resp = client.get("/")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["platform"] == "SpectraSync"
+    assert data["status"] == "operational"
+
+
+def test_health_endpoints():
+    resp = client.get("/api/health")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "healthy"
+
+    resp_services = client.get("/api/health/services")
+    assert resp_services.status_code == 200
+    services_data = resp_services.json()
+    assert services_data["status"] == "operational"
+    assert services_data["services"]["database"]["status"] == "healthy"
+
+
+def test_demo_signals_list():
+    resp = client.get("/api/demos/list")
+    assert resp.status_code == 200
+    demos = resp.json()
+    assert len(demos) == 6
+    keys = [d["key"] for d in demos]
+    assert "golden_qpsk" in keys
+    assert "golden_bpsk" in keys
+    assert "golden_unknown" in keys
+
+
+def test_demo_qpsk_execution():
+    # Trigger demo QPSK job
+    resp = client.post("/api/demos/golden_qpsk/load")
+    assert resp.status_code == 200
+    job_data = resp.json()
+    job_id = job_data["id"]
+
+    # Poll status until completed (worker runs in in-memory thread pool)
+    timeout = 15.0
+    start = time.time()
+    final_status = None
+
+    while time.time() - start < timeout:
+        status_resp = client.get(f"/api/jobs/{job_id}/status")
+        assert status_resp.status_code == 200
+        status_data = status_resp.json()
+        if status_data["status"] in ["completed", "failed"]:
+            final_status = status_data["status"]
+            break
+        time.sleep(0.3)
+
+    assert final_status == "completed", f"Job failed or timed out: {status_data}"
+
+    # Verify full analysis result
+    analysis_resp = client.get(f"/api/jobs/{job_id}/analysis")
+    assert analysis_resp.status_code == 200
+    analysis = analysis_resp.json()
+    assert analysis["primary_modulation"] == "QPSK"
+    assert "parameters" in analysis
+    assert "carrier_frequency" in analysis["parameters"]
+    assert "symbol_rate" in analysis["parameters"]
+    assert "snr" in analysis["parameters"]
+    assert len(analysis["stages"]) == 13
+
+    # Verify report generation
+    report_resp = client.post(f"/api/jobs/{job_id}/report?export_format=json")
+    assert report_resp.status_code == 200
+    assert report_resp.json()["primary_modulation"] == "QPSK"
