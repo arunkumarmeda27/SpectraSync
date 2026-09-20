@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Server, Database, HardDrive, Cpu, Shield, Save, CheckCircle2 } from 'lucide-react';
+import { Settings, Server, Database, HardDrive, Cpu, Save } from 'lucide-react';
 import { getHealth, type HealthStatus } from '../api';
 import { useStore } from '../store';
 
@@ -58,7 +58,7 @@ const SettingsPage: React.FC = () => {
                   <div style={{ fontSize: '0.7rem', color: '#64748b' }}>Port 8000 · ASGI Uvicorn</div>
                 </div>
               </div>
-              <span className="badge badge-high">Operational</span>
+              <span className="badge badge-high">{health?.status === 'healthy' ? 'Operational' : 'Active'}</span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
@@ -69,7 +69,7 @@ const SettingsPage: React.FC = () => {
                   <div style={{ fontSize: '0.7rem', color: '#64748b' }}>13-Stage NumPy/SciPy Engine</div>
                 </div>
               </div>
-              <span className="badge badge-high">Ready</span>
+              <span className="badge badge-high">{health?.worker || 'Ready'}</span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
@@ -77,7 +77,7 @@ const SettingsPage: React.FC = () => {
                 <Database size={18} color="#8b5cf6" />
                 <div>
                   <div style={{ fontWeight: 600, fontSize: '0.82rem', color: '#0f172a' }}>Database Store</div>
-                  <div style={{ fontSize: '0.7rem', color: '#64748b' }}>SQLite (Local) / PostgreSQL</div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{health?.db || 'SQLite (Local) / PostgreSQL'}</div>
                 </div>
               </div>
               <span className="badge badge-high">Connected</span>
@@ -88,7 +88,7 @@ const SettingsPage: React.FC = () => {
                 <HardDrive size={18} color="#f59e0b" />
                 <div>
                   <div style={{ fontWeight: 600, fontSize: '0.82rem', color: '#0f172a' }}>Object Storage</div>
-                  <div style={{ fontSize: '0.7rem', color: '#64748b' }}>MinIO / S3 / Local Disk</div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{health?.storage || 'MinIO / S3 / Local Disk'}</div>
                 </div>
               </div>
               <span className="badge badge-high">Healthy</span>

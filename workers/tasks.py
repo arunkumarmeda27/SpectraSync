@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from backend.app.core.database import SessionLocal
@@ -54,7 +54,7 @@ def process_analysis_job(payload: Dict[str, Any]) -> None:
 
         job.status = "validating"
         job.progress = 5
-        job.started_at = datetime.utcnow()
+        job.started_at = datetime.now(timezone.utc)
         db.commit()
 
         abs_file_path = storage_service.get_file_path(job.signal_file.storage_path)
@@ -84,7 +84,7 @@ def process_analysis_job(payload: Dict[str, Any]) -> None:
         if results.get("status") == "failed":
             job.status = "failed"
             job.error = results.get("error", "DSP pipeline failed")
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(timezone.utc)
             db.commit()
             broadcast_update(job_id, {"job_id": job_id, "status": "failed", "error": job.error})
             return
@@ -162,7 +162,7 @@ def process_analysis_job(payload: Dict[str, Any]) -> None:
         job.status = "completed"
         job.progress = 100
         job.current_stage = "completed"
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(timezone.utc)
         db.commit()
 
         broadcast_update(job_id, {
@@ -180,7 +180,7 @@ def process_analysis_job(payload: Dict[str, Any]) -> None:
             if job:
                 job.status = "failed"
                 job.error = str(ex)
-                job.completed_at = datetime.utcnow()
+                job.completed_at = datetime.now(timezone.utc)
                 db.commit()
             broadcast_update(job_id, {"job_id": job_id, "status": "failed", "error": str(ex)})
         except Exception:

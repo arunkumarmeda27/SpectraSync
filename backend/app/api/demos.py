@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
+from backend.app.core.security import get_current_user
 from backend.app.schemas.job import AnalysisJobOut
 from backend.app.services.file_service import FileService
 from backend.app.services.job_service import JobService
@@ -58,7 +59,11 @@ def list_demo_signals():
 
 
 @router.post("/{demo_key}/load", response_model=AnalysisJobOut)
-def load_and_analyze_demo(demo_key: str, db: Session = Depends(get_db)):
+def load_and_analyze_demo(
+    demo_key: str,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
     """Load a demo signal, create an analysis job, and run asynchronously."""
     valid_keys = [p["key"] for p in DEMO_PRESETS]
     if demo_key not in valid_keys:

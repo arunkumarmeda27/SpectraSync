@@ -1,27 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import {
-  BarChart2,
-  Maximize2,
-  RefreshCw,
-  Layers,
-  ZoomIn,
-  Sliders,
-  Eye,
-  Activity
-} from 'lucide-react';
+import { BarChart2 } from 'lucide-react';
 import {
   TimeDomainWaveform,
   FrequencySpectrumPlot,
   SpectrogramWaterfall,
   ConstellationPlot
 } from '../components/DashboardPlots';
-import { listJobs, getAnalysisResult, type AnalysisJob } from '../api';
+import { listJobs, type AnalysisJob } from '../api';
 
 const VisualizationsPage: React.FC = () => {
   const [jobs, setJobs] = useState<AnalysisJob[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [activeView, setActiveView] = useState<'all' | 'waveform' | 'fft' | 'waterfall' | 'constellation'>('all');
-  const [colorScheme, setColorScheme] = useState('turbo');
 
   useEffect(() => {
     listJobs().then(j => {

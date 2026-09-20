@@ -43,9 +43,12 @@ class MetadataExtractor:
 
     @staticmethod
     def extract_from_sidecar(filepath: Union[str, Path]) -> Optional[Dict[str, Any]]:
-        """Look for an adjacent sidecar metadata JSON file (e.g., recording.iq.json or recording.json)."""
+        """Look for an adjacent sidecar metadata JSON file or SigMF metadata."""
         path = Path(filepath)
         candidates = [
+            path.with_suffix(".sigmf-meta"),
+            Path(str(path).replace(".sigmf-data", ".sigmf-meta")),
+            path.parent / f"{path.stem}.sigmf-meta",
             path.with_suffix(".json"),
             path.parent / f"{path.name}.json"
         ]
@@ -61,17 +64,42 @@ class MetadataExtractor:
                     pass
         return None
 
+    @staticmethod
+    def extract_from_sigmf(sigmf_meta: Dict[str, Any]) -> Dict[str, Any]:
+        """Map standard SigMF v1.0 schema (global, captures, annotations) to SpectraSync metadata."""
+        out: Dict[str, Any] = {"format": "sigmf", "is_stereo_iq": True}
+        global_block = sigmf_meta.get("global", {})
+        if "core:sample_rate" in global_block:
+            out["sample_rate"] = float(global_block["core:sample_rate"])
+        if "core:datatype" in global_block:
+            out["datatype"] = str(global_block["core:datatype"])
+        if "core:version" in global_block:
+            out["sigmf_version"] = str(global_block["core:version"])
+        if "core:description" in global_block:
+            out["description"] = str(global_block["core:description"])
+
+        captures = sigmf_meta.get("captures", [])
+        if captures and isinstance(captures, list) and len(captures) > 0:
+            cap0 = captures[0]
+            if "core:frequency" in cap0:
+                out["center_frequency"] = float(cap0["core:frequency"])
+            if "core:datetime" in cap0:
+                out["recording_timestamp"] = str(cap0["core:datetime"])
+
+        return out
+
     @classmethod
     def get_metadata(cls, filepath: Union[str, Path]) -> Dict[str, Any]:
-        """Extract combined metadata from file header and optional sidecar JSON."""
+        """Extract combined metadata from file header, SigMF meta, or sidecar JSON."""
         path = Path(filepath)
         suffix = path.suffix.lower()
 
         if suffix == ".wav":
             meta = cls.extract_from_wav(path)
         else:
+            fmt = "sigmf" if (suffix in [".sigmf", ".sigmf-data"] or path.name.endswith(".sigmf-data")) else "iq"
             meta = {
-                "format": "iq",
+                "format": fmt,
                 "channels": 2,
                 "sample_rate": 1_000_000.0,  # Default nominal baseband 1 MHz
                 "bit_depth": 32,     # Assuming float32 I, float32 Q
@@ -83,13 +111,19 @@ class MetadataExtractor:
         sidecar = cls.extract_from_sidecar(path)
         if sidecar:
             meta["sidecar"] = sidecar
-            # Propagate sample rate and center frequency if present in sidecar
+            # Check for SigMF standard structures
+            if "global" in sidecar or "captures" in sidecar:
+                sigmf_fields = cls.extract_from_sigmf(sidecar)
+                meta.update(sigmf_fields)
+
+            # Direct sidecar keys override
             if "sample_rate" in sidecar:
                 meta["sample_rate"] = float(sidecar["sample_rate"])
             if "center_frequency" in sidecar:
                 meta["center_frequency"] = float(sidecar["center_frequency"])
             if "modulation" in sidecar:
                 meta["ground_truth_modulation"] = sidecar["modulation"]
+
             if meta["sample_rate"] > 0 and meta["num_samples"] > 0:
                 meta["duration_seconds"] = meta["num_samples"] / meta["sample_rate"]
 

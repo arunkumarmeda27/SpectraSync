@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.api.analysis import router as analysis_router
+from backend.app.api.analysis import router as analysis_router, alias_router as analysis_alias_router
 from backend.app.api.auth import router as auth_router
 from backend.app.api.demos import router as demos_router
 from backend.app.api.files import router as files_router
@@ -45,6 +45,7 @@ app.include_router(auth_router, prefix=api_prefix)
 app.include_router(files_router, prefix=api_prefix)
 app.include_router(jobs_router, prefix=api_prefix)
 app.include_router(analysis_router, prefix=api_prefix)
+app.include_router(analysis_alias_router, prefix=api_prefix)
 app.include_router(reports_router, prefix=api_prefix)
 app.include_router(demos_router, prefix=api_prefix)
 app.include_router(health_router, prefix=api_prefix)

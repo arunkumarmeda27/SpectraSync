@@ -1,10 +1,12 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { Bell } from 'lucide-react';
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { Bell, LogOut } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import { ToastContainer } from './components/Shared';
+import ProtectedRoute from './components/ProtectedRoute';
 
 // Pages
+import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import UploadPage from './pages/UploadPage';
 import JobQueue from './pages/JobQueue';
@@ -16,9 +18,25 @@ import SettingsPage from './pages/SettingsPage';
 import ResultsViewer from './pages/ResultsViewer';
 import ResultsList from './pages/ResultsList';
 import DemosPage from './pages/DemosPage';
+import { useStore } from './store';
+import { logoutUser } from './api';
 import './index.css';
 
 const AppShell: React.FC = () => {
+  const navigate = useNavigate();
+  const { user, clearAuth, addToast } = useStore();
+
+  const handleLogout = async () => {
+    await logoutUser();
+    clearAuth();
+    addToast('info', 'Logged out successfully');
+    navigate('/login');
+  };
+
+  const userRole = user?.role === 'admin' ? 'Administrator' : 'Analyst';
+  const userEmail = user?.email || 'analyst@spectrasync.io';
+  const userInitial = (userEmail[0] || 'A').toUpperCase();
+
   return (
     <div className="app-shell">
       <Sidebar />
@@ -51,32 +69,67 @@ const AppShell: React.FC = () => {
               />
             </div>
 
-            {/* Analyst User Profile */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-              <div
+            {/* Authenticated User Profile & Logout */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: '50%',
+                    background: user?.role === 'admin' ? '#7c3aed' : '#2563eb',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 700,
+                    fontSize: '0.85rem'
+                  }}
+                >
+                  {userInitial}
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a', lineHeight: 1.1 }}>
+                    {userRole}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                    {userEmail}
+                  </div>
+                </div>
+              </div>
+
+              {/* Logout Button */}
+              <button
+                onClick={handleLogout}
+                title="Sign out of SpectraSync"
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: '50%',
-                  background: '#2563eb',
-                  color: '#ffffff',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 700,
-                  fontSize: '0.85rem'
+                  gap: '0.35rem',
+                  background: '#f1f5f9',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  padding: '0.35rem 0.6rem',
+                  fontSize: '0.74rem',
+                  fontWeight: 600,
+                  color: '#475569',
+                  cursor: 'pointer',
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#fee2e2';
+                  e.currentTarget.style.color = '#dc2626';
+                  e.currentTarget.style.borderColor = '#fca5a5';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#f1f5f9';
+                  e.currentTarget.style.color = '#475569';
+                  e.currentTarget.style.borderColor = '#cbd5e1';
                 }}
               >
-                A
-              </div>
-              <div>
-                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a', lineHeight: 1.1 }}>
-                  Analyst
-                </div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                  analyst@domain.com
-                </div>
-              </div>
+                <LogOut size={13} />
+                <span>Logout</span>
+              </button>
             </div>
           </div>
         </header>
@@ -111,7 +164,17 @@ const AppShell: React.FC = () => {
 
 const App: React.FC = () => (
   <BrowserRouter>
-    <AppShell />
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/*"
+        element={
+          <ProtectedRoute>
+            <AppShell />
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
   </BrowserRouter>
 );
 

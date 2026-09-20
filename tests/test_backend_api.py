@@ -8,6 +8,17 @@ from backend.app.main import app
 client = TestClient(app)
 
 
+def get_auth_token():
+    """Helper to log in as analyst and return Bearer token headers."""
+    resp = client.post("/api/auth/login", json={
+        "email": "analyst@spectrasync.io",
+        "password": "analyst123"
+    })
+    assert resp.status_code == 200, f"Login failed: {resp.text}"
+    token = resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_root_endpoint():
     resp = client.get("/")
     assert resp.status_code == 200
@@ -40,8 +51,10 @@ def test_demo_signals_list():
 
 
 def test_demo_qpsk_execution():
+    headers = get_auth_token()
+
     # Trigger demo QPSK job
-    resp = client.post("/api/demos/golden_qpsk/load")
+    resp = client.post("/api/demos/golden_qpsk/load", headers=headers)
     assert resp.status_code == 200
     job_data = resp.json()
     job_id = job_data["id"]
@@ -50,9 +63,10 @@ def test_demo_qpsk_execution():
     timeout = 15.0
     start = time.time()
     final_status = None
+    status_data = {}
 
     while time.time() - start < timeout:
-        status_resp = client.get(f"/api/jobs/{job_id}/status")
+        status_resp = client.get(f"/api/jobs/{job_id}/status", headers=headers)
         assert status_resp.status_code == 200
         status_data = status_resp.json()
         if status_data["status"] in ["completed", "failed"]:
@@ -63,7 +77,7 @@ def test_demo_qpsk_execution():
     assert final_status == "completed", f"Job failed or timed out: {status_data}"
 
     # Verify full analysis result
-    analysis_resp = client.get(f"/api/jobs/{job_id}/analysis")
+    analysis_resp = client.get(f"/api/jobs/{job_id}/analysis", headers=headers)
     assert analysis_resp.status_code == 200
     analysis = analysis_resp.json()
     assert analysis["primary_modulation"] == "QPSK"
@@ -74,6 +88,6 @@ def test_demo_qpsk_execution():
     assert len(analysis["stages"]) == 13
 
     # Verify report generation
-    report_resp = client.post(f"/api/jobs/{job_id}/report?export_format=json")
+    report_resp = client.post(f"/api/jobs/{job_id}/report?export_format=json", headers=headers)
     assert report_resp.status_code == 200
     assert report_resp.json()["primary_modulation"] == "QPSK"

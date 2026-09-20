@@ -18,7 +18,7 @@ import {
   SpectrogramWaterfall,
   ConstellationPlot
 } from '../components/DashboardPlots';
-import { uploadFile, createJob, listJobs, getAnalysisResult } from '../api';
+import { uploadFile, createJob, listJobs, getAnalysisResult, downloadReport } from '../api';
 import { useStore } from '../store';
 
 const STEPS = [
@@ -373,10 +373,20 @@ const Dashboard: React.FC = () => {
     addToast('success', 'Downloaded recovered bit stream.');
   };
 
-  const handleGenerateReport = () => {
-    // Navigate to reports or open print dialog
-    addToast('info', 'Generating comprehensive PDF report...');
-    window.print();
+  const handleGenerateReport = async () => {
+    // If the selected job has a real backend ID (not a demo ID >= 1020), download PDF via API
+    if (selectedJob.id > 0 && selectedJob.id < 1020) {
+      addToast('info', 'Generating PDF report via SpectraSync report engine...');
+      try {
+        await downloadReport(selectedJob.id, 'pdf');
+        addToast('success', `PDF report for Job #${selectedJob.id} downloaded.`);
+      } catch (err: unknown) {
+        addToast('error', `Report generation failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } else {
+      // Navigate to reports page for demo jobs
+      navigate('/reports');
+    }
   };
 
   return (

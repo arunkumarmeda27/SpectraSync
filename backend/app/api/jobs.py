@@ -5,11 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
+from backend.app.core.security import get_current_user
 from backend.app.models.analysis_job import AnalysisJob
-from backend.app.schemas.job import AnalysisJobCreate, AnalysisJobOut, JobStatusOut
+from backend.app.schemas.job import AnalysisJobCreate, AnalysisJobOut, JobStatusOut, ProcessingStageOut
 from backend.app.services.job_service import JobService
 
-router = APIRouter(prefix="/jobs", tags=["jobs"])
+router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("", response_model=AnalysisJobOut)
@@ -58,6 +59,15 @@ def get_job_status(job_id: int, db: Session = Depends(get_db)):
         error=job.error,
         completed_at=job.completed_at
     )
+
+
+@router.get("/{job_id}/stages", response_model=List[ProcessingStageOut])
+def get_job_stages(job_id: int, db: Session = Depends(get_db)):
+    """Retrieve all execution stages and telemetry for an analysis job."""
+    job = db.query(AnalysisJob).filter(AnalysisJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job.stages
 
 
 @router.post("/{job_id}/retry", response_model=AnalysisJobOut)

@@ -6,12 +6,13 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
+from backend.app.core.security import get_current_user
 from backend.app.models.signal_file import SignalFile
 from backend.app.schemas.file import FileUploadResponse, SignalFileOut
 from backend.app.services.file_service import FileService
 from backend.app.services.storage_service import storage_service
 
-router = APIRouter(prefix="/files", tags=["files"])
+router = APIRouter(prefix="/files", tags=["files"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("/upload", response_model=FileUploadResponse)

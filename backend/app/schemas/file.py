@@ -2,10 +2,12 @@
 
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class SignalFileOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     filename: str
     format: str
@@ -17,9 +19,6 @@ class SignalFileOut(BaseModel):
     storage_path: str
     checksum: str
     uploaded_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class FileUploadResponse(BaseModel):

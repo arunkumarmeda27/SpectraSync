@@ -22,7 +22,7 @@ class ValidationResult:
 class FileValidator:
     """Validates raw .IQ and .WAV recording integrity, formats, and headers."""
 
-    SUPPORTED_EXTENSIONS = {".iq", ".wav", ".bin", ".raw"}
+    SUPPORTED_EXTENSIONS = {".iq", ".wav", ".bin", ".raw", ".sigmf-data", ".sigmf"}
     MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB default safe limit
     MIN_FILE_SIZE = 64  # Needs at least a few samples or header
 
@@ -58,6 +58,10 @@ class FileValidator:
             )
 
         suffix = path.suffix.lower()
+        # Handle compound extensions like .sigmf-data
+        if path.name.endswith(".sigmf-data"):
+            suffix = ".sigmf-data"
+
         if suffix not in cls.SUPPORTED_EXTENSIONS:
             return ValidationResult(
                 is_valid=False,
@@ -91,6 +95,14 @@ class FileValidator:
                     error_message=f"Error reading WAV header: {str(e)}",
                     suggested_action="Verify disk permissions and file health."
                 )
+        elif suffix in [".sigmf-data", ".sigmf"]:
+            # Check for companion .sigmf-meta file
+            meta_cand = path.with_suffix(".sigmf-meta") if suffix != ".sigmf-data" else Path(str(path).replace(".sigmf-data", ".sigmf-meta"))
+            if not meta_cand.is_file():
+                meta_cand_alt = path.parent / f"{path.stem}.sigmf-meta"
+                if not meta_cand_alt.is_file():
+                    warnings.append("Companion .sigmf-meta metadata file not found; using nominal RF defaults.")
+            detected = "sigmf"
         else:
             # Check raw binary readability and element alignment
             # Complex64 elements are 8 bytes each (float32 I, float32 Q)

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from backend.app.schemas.file import SignalFileOut
 
 
@@ -12,6 +12,8 @@ class AnalysisJobCreate(BaseModel):
 
 
 class ProcessingStageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     stage_name: str
     status: str
@@ -22,30 +24,26 @@ class ProcessingStageOut(BaseModel):
     metrics: Dict[str, Any] = {}
     error: Optional[Dict[str, Any]] = None
 
-    class Config:
-        from_attributes = True
-
 
 class AnalysisJobOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     signal_file_id: int
     status: str
     progress: int
-    current_stage: str
+    current_stage: Optional[str] = None
     pipeline_config: Dict[str, Any] = {}
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error: Optional[str] = None
     signal_file: Optional[SignalFileOut] = None
 
-    class Config:
-        from_attributes = True
-
 
 class JobStatusOut(BaseModel):
     job_id: int
     status: str
     progress: int
-    current_stage: str
+    current_stage: Optional[str] = None
     error: Optional[str] = None
     completed_at: Optional[datetime] = None

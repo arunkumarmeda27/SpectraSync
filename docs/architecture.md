@@ -87,3 +87,15 @@ The persistence layer is managed via SQLAlchemy ORM:
 - **`analysis_results`**: Primary modulation, confidence, estimated parameters, synchronization data, demodulation summary, bit views.
 - **`bitstreams`**: Raw recovered bits, hex stream, ASCII dump, bit density, transition metrics.
 - **`artifacts`**: Exported report documents (JSON, CSV, HTML), plot images, and logs.
+
+---
+
+## 5. Authentication & Access Control (M6.1)
+
+### 5.1 Architecture & Token Flow
+- **Stateless JWT Tokens**: Upon successful authentication via `POST /api/auth/login`, the backend issues a signed JWT access token containing user identity and role claims.
+- **Header Propagation**: Clients pass `Authorization: Bearer <token>` on all requests. Axios interceptors automatically inject this header and capture `401 Unauthorized` responses to redirect to `/login`.
+- **Password Security**: Passwords are hashed using salted PBKDF2-HMAC-SHA256 (100,000 iterations) with constant-time verification to eliminate timing attacks.
+- **Role-Based Authorization**: Roles (`analyst`, `admin`) govern operational capabilities.
+- **Protected Surface**: All signal file ingestion, analysis job submission, DSP telemetry, and report generation endpoints require active authorization. Public endpoints are restricted to root, health checks, login, and the demo catalog list.
+

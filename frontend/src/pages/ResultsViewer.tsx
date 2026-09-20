@@ -9,7 +9,7 @@ import {
   AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { getJob, getAnalysisResult, getStages, type AnalysisJob, type AnalysisResult, type ProcessingStage } from '../api';
+import { getJob, getAnalysisResult, getStages, downloadReport, type AnalysisJob, type AnalysisResult, type ProcessingStage } from '../api';
 import {
   StatusBadge, ModBadge, ConfidenceMeter, ProgressBar,
   Spinner, fmtFreq
@@ -22,7 +22,9 @@ function useJobWs(jobId: number, onUpdate: (d: Record<string, unknown>) => void)
   useEffect(() => {
     if (!jobId) return;
     try {
-      const sock = new WebSocket(`ws://${window.location.hostname}:8000/ws/jobs/${jobId}`);
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.port === '5173' ? `${window.location.hostname}:8000` : window.location.host;
+      const sock = new WebSocket(`${protocol}//${host}/ws/jobs/${jobId}`);
       ws.current = sock;
       sock.onmessage = (e) => {
         try { onUpdate(JSON.parse(e.data)); } catch { /* ignore */ }
@@ -134,6 +136,20 @@ const ResultsViewer: React.FC = () => {
   const [stages, setStages] = useState<ProcessingStage[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'spectrum' | 'bitstream' | 'stages' | 'raw'>('overview');
+  const [downloadingFormat, setDownloadingFormat] = useState<string | null>(null);
+
+  const handleDownload = async (format: 'pdf' | 'csv' | 'json') => {
+    setDownloadingFormat(format);
+    try {
+      addToast('info', `Generating ${format.toUpperCase()} report...`);
+      await downloadReport(id, format);
+      addToast('success', `Downloaded ${format.toUpperCase()} report for Job #${id}`);
+    } catch (err: unknown) {
+      addToast('error', `Report download failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setDownloadingFormat(null);
+    }
+  };
 
   const load = async () => {
     try {
@@ -205,7 +221,40 @@ const ResultsViewer: React.FC = () => {
           </div>
         </div>
         <StatusBadge status={job.status} />
-        <button className="btn btn-ghost btn-sm" onClick={load}>
+
+        {job.status === 'completed' && (
+          <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+            <button
+              className="btn btn-primary btn-sm"
+              style={{ background: '#0284c7', fontSize: '0.75rem', gap: '0.3rem' }}
+              disabled={downloadingFormat !== null}
+              onClick={() => handleDownload('pdf')}
+              title="Download publication-grade vector PDF report"
+            >
+              <Download size={13} /> PDF Report
+            </button>
+            <button
+              className="btn btn-secondary btn-sm"
+              style={{ fontSize: '0.75rem', gap: '0.3rem' }}
+              disabled={downloadingFormat !== null}
+              onClick={() => handleDownload('csv')}
+              title="Download estimated parameters as CSV"
+            >
+              CSV
+            </button>
+            <button
+              className="btn btn-secondary btn-sm"
+              style={{ fontSize: '0.75rem', gap: '0.3rem' }}
+              disabled={downloadingFormat !== null}
+              onClick={() => handleDownload('json')}
+              title="Download full analysis bundle JSON"
+            >
+              JSON
+            </button>
+          </div>
+        )}
+
+        <button className="btn btn-ghost btn-sm" onClick={load} title="Refresh">
           <RefreshCw size={14} />
         </button>
       </div>

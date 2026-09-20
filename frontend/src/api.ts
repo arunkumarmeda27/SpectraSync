@@ -6,9 +6,22 @@ const api = axios.create({
   timeout: 30000,
 });
 
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('spectrasync_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 api.interceptors.response.use(
   r => r,
   err => {
+    if (err.response?.status === 401 && !window.location.pathname.includes('/login')) {
+      localStorage.removeItem('spectrasync_token');
+      localStorage.removeItem('spectrasync_user');
+      window.location.href = '/login';
+    }
     const msg = err.response?.data?.detail || err.message || 'Request failed';
     return Promise.reject(new Error(msg));
   }
@@ -123,10 +136,10 @@ export const deleteJob = async (id: number) => (await api.delete(`/jobs/${id}`))
 // ─── Analysis Endpoints ───────────────────────────────────────────────────────
 
 export const getAnalysisResult = async (jobId: number) =>
-  (await api.get<AnalysisResult>(`/analysis/${jobId}`)).data;
+  (await api.get<AnalysisResult>(`/jobs/${jobId}/analysis`)).data;
 
 export const getStages = async (jobId: number) =>
-  (await api.get<ProcessingStage[]>(`/analysis/${jobId}/stages`)).data;
+  (await api.get<ProcessingStage[]>(`/jobs/${jobId}/stages`)).data;
 
 // ─── Demo Endpoints ───────────────────────────────────────────────────────────
 
@@ -137,8 +150,69 @@ export const loadDemo = async (filename: string) =>
 
 // ─── Report Endpoints ─────────────────────────────────────────────────────────
 
-export const generateReport = async (jobId: number, format: 'json' | 'pdf' = 'json') =>
-  (await api.post(`/reports/${jobId}/generate`, { format })).data;
+export const generateReport = async (jobId: number, format: 'json' | 'pdf' | 'csv' | 'html' = 'json') =>
+  (await api.post(`/jobs/${jobId}/report?export_format=${format}`)).data;
+
+export const downloadReport = async (jobId: number, format: 'json' | 'pdf' | 'csv' | 'html' = 'pdf') => {
+  const res = await api.post(`/jobs/${jobId}/report?export_format=${format}`, null, {
+    responseType: format === 'json' ? 'json' : 'blob',
+  });
+
+  if (format === 'json') {
+    const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `spectrasync_job_${jobId}_report.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    return;
+  }
+
+  const mimeMap: Record<string, string> = {
+    pdf: 'application/pdf',
+    csv: 'text/csv',
+    html: 'text/html'
+  };
+
+  const blob = new Blob([res.data], { type: mimeMap[format] || 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `spectrasync_job_${jobId}_report.${format}`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+// ─── Auth Endpoints ───────────────────────────────────────────────────────────
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: {
+    id: number;
+    email: string;
+    role: string;
+    created_at: string;
+  };
+}
+
+export const loginUser = async (email: string, password: string): Promise<AuthResponse> =>
+  (await api.post<AuthResponse>('/auth/login', { email, password })).data;
+
+export const getMe = async () =>
+  (await api.get<{ id: number; email: string; role: string; created_at: string }>('/auth/me')).data;
+
+export const logoutUser = async (): Promise<void> => {
+  try {
+    await api.post('/auth/logout');
+  } catch {
+    // Ignore error on logout
+  } finally {
+    localStorage.removeItem('spectrasync_token');
+    localStorage.removeItem('spectrasync_user');
+  }
+};
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 

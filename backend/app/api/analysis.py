@@ -5,12 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
+from backend.app.core.security import get_current_user
 from backend.app.models.analysis_job import AnalysisJob
 from backend.app.models.analysis_result import AnalysisResult
 from backend.app.models.artifact import Artifact
 from backend.app.models.bitstream import Bitstream
 
-router = APIRouter(prefix="/jobs/{job_id}", tags=["analysis"])
+router = APIRouter(prefix="/jobs/{job_id}", tags=["analysis"], dependencies=[Depends(get_current_user)])
 
 
 def _get_job(db: Session, job_id: int) -> AnalysisJob:
@@ -121,12 +122,18 @@ def get_demodulation(job_id: int, db: Session = Depends(get_db)):
 def get_recovery(job_id: int, db: Session = Depends(get_db)):
     """Retrieve de-interleaving and FEC decoding metrics."""
     job = _get_job(db, job_id)
-    # Extract stages 9 and 10 from processing_stages
-    stages = {st.stage_name: st.metrics for st in job.stages}
+    stages_metrics = {st.stage_name: st.metrics for st in job.stages}
+    stages_config = {st.stage_name: st.configuration for st in job.stages}
     return {
         "job_id": job.id,
-        "deinterleaving": stages.get("de_interleaving", {}),
-        "fec": stages.get("fec", {})
+        "deinterleaving": {
+            "metrics": stages_metrics.get("de_interleaving", {}),
+            "configuration": stages_config.get("de_interleaving", {})
+        },
+        "fec": {
+            "metrics": stages_metrics.get("fec", {}),
+            "summary": stages_config.get("fec", {})
+        }
     }
 
 
@@ -178,3 +185,33 @@ def get_artifacts(job_id: int, db: Session = Depends(get_db)):
         }
         for a in artifacts
     ]
+
+
+# Secondary alias router for /api/analysis/* path compatibility
+alias_router = APIRouter(prefix="/analysis", tags=["analysis"], dependencies=[Depends(get_current_user)])
+
+
+@alias_router.get("/{job_id}")
+def get_analysis_by_job_alias(job_id: int, db: Session = Depends(get_db)):
+    """Direct alias for /api/jobs/{job_id}/analysis."""
+    return get_full_analysis(job_id, db)
+
+
+@alias_router.get("/{job_id}/stages")
+def get_analysis_stages_alias(job_id: int, db: Session = Depends(get_db)):
+    """Direct alias for /api/jobs/{job_id}/stages."""
+    job = _get_job(db, job_id)
+    return [
+        {
+            "id": st.id,
+            "job_id": st.job_id,
+            "stage_name": st.stage_name,
+            "status": st.status,
+            "duration_ms": st.duration_ms,
+            "metrics": st.metrics,
+            "configuration": st.configuration,
+            "error": st.error
+        }
+        for st in job.stages
+    ]
+

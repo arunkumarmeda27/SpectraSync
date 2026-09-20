@@ -14,9 +14,13 @@ class Settings(BaseModel):
     DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
 
     # Security & Auth
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "spectrasync-super-secret-key-change-in-production")
-    ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+    JWT_SECRET: str = os.getenv("JWT_SECRET", os.getenv("SECRET_KEY", "spectrasync-super-secret-jwt-key-2026"))
+    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", os.getenv("ALGORITHM", "HS256"))
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440")))
+    # Aliases for backward compatibility
+    SECRET_KEY: str = os.getenv("SECRET_KEY", os.getenv("JWT_SECRET", "spectrasync-super-secret-jwt-key-2026"))
+    ALGORITHM: str = os.getenv("ALGORITHM", os.getenv("JWT_ALGORITHM", "HS256"))
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "1440")))
 
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./spectrasync.db")

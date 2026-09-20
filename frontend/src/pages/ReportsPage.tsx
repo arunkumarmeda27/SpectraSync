@@ -1,8 +1,7 @@
-// Reports page
 import React, { useEffect, useState } from 'react';
-import { FileText, Download, Eye } from 'lucide-react';
+import { FileText, Download, Eye, FileSpreadsheet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { listJobs, type AnalysisJob } from '../api';
+import { listJobs, downloadReport, type AnalysisJob } from '../api';
 import { ModBadge, StatusBadge, fmtDate, Spinner, EmptyState } from '../components/Shared';
 import { useStore } from '../store';
 
@@ -11,6 +10,7 @@ const ReportsPage: React.FC = () => {
   const { addToast } = useStore();
   const [jobs, setJobs] = useState<AnalysisJob[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
   useEffect(() => {
     listJobs()
@@ -19,16 +19,17 @@ const ReportsPage: React.FC = () => {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleDownloadJson = (job: AnalysisJob) => {
-    if (!job.result) return;
-    const blob = new Blob([JSON.stringify(job.result, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `spectrasync_job_${job.id}_report.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    addToast('success', `Downloaded report for job #${job.id}`);
+  const handleDownload = async (jobId: number, format: 'pdf' | 'csv' | 'json') => {
+    setDownloadingId(jobId);
+    try {
+      addToast('info', `Generating ${format.toUpperCase()} report for Job #${jobId}...`);
+      await downloadReport(jobId, format);
+      addToast('success', `Downloaded ${format.toUpperCase()} report for Job #${jobId}`);
+    } catch (err: unknown) {
+      addToast('error', `Failed to download report: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   if (loading) {
@@ -42,9 +43,9 @@ const ReportsPage: React.FC = () => {
   return (
     <div className="animate-fade-in">
       <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Reports</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Reports & Intelligence</h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Download analysis reports for completed jobs. JSON format includes all DSP parameters, modulation data, bitstream, and stage telemetry.
+          Generate and download publication-ready analysis reports for completed jobs. Formats include Vector PDF, CSV parameters, and JSON telemetry.
         </p>
       </div>
 
@@ -65,7 +66,7 @@ const ReportsPage: React.FC = () => {
                 <th>Modulation</th>
                 <th>Confidence</th>
                 <th>Completed</th>
-                <th>Actions</th>
+                <th>Export Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -74,7 +75,7 @@ const ReportsPage: React.FC = () => {
                   <td><span className="font-mono" style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>#{job.id}</span></td>
                   <td>
                     <span className="truncate" style={{ maxWidth: 200, display: 'block', fontSize: '0.85rem' }}>
-                      {job.signal_file?.original_filename || `file_${job.signal_file_id}`}
+                      {job.signal_file?.original_filename || job.signal_file?.filename || `file_${job.signal_file_id}`}
                     </span>
                   </td>
                   <td><StatusBadge status={job.status} /></td>
@@ -91,7 +92,7 @@ const ReportsPage: React.FC = () => {
                     {job.completed_at ? fmtDate(job.completed_at) : '—'}
                   </td>
                   <td>
-                    <div style={{ display: 'flex', gap: '0.25rem' }}>
+                    <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                       <button
                         className="btn btn-ghost btn-sm"
                         title="View results"
@@ -100,11 +101,31 @@ const ReportsPage: React.FC = () => {
                         <Eye size={13} />
                       </button>
                       <button
-                        className="btn btn-secondary btn-sm"
-                        title="Download JSON report"
-                        onClick={() => handleDownloadJson(job)}
+                        className="btn btn-primary btn-sm"
+                        style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', background: '#0284c7' }}
+                        title="Download official PDF report"
+                        disabled={downloadingId === job.id}
+                        onClick={() => handleDownload(job.id, 'pdf')}
                       >
-                        <Download size={13} /> JSON
+                        <Download size={12} /> PDF
+                      </button>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+                        title="Download CSV parameters"
+                        disabled={downloadingId === job.id}
+                        onClick={() => handleDownload(job.id, 'csv')}
+                      >
+                        <FileSpreadsheet size={12} /> CSV
+                      </button>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+                        title="Download JSON telemetry"
+                        disabled={downloadingId === job.id}
+                        onClick={() => handleDownload(job.id, 'json')}
+                      >
+                        <Download size={12} /> JSON
                       </button>
                     </div>
                   </td>

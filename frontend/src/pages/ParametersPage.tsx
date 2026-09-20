@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SlidersHorizontal, CheckCircle, Info, ShieldCheck, Download, ExternalLink } from 'lucide-react';
+import { SlidersHorizontal, ShieldCheck, Download } from 'lucide-react';
 import { useStore } from '../store';
 
 interface ParameterDetail {

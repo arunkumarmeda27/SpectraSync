@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Binary, Download, Search, FileCode, CheckCircle, Hash } from 'lucide-react';
+import { Binary, Download, Search } from 'lucide-react';
 import { useStore } from '../store';
 
 const SAMPLE_HEX_ROWS = [
