@@ -16,36 +16,42 @@ DEMO_PRESETS = [
     {
         "key": "golden_bpsk",
         "name": "Demo BPSK",
+        "filename": "golden_bpsk.iq",
         "description": "BPSK baseband recording (50 kBaud, +5 kHz carrier offset, 22 dB SNR, Barker-11 preamble)",
         "modulation": "BPSK"
     },
     {
         "key": "golden_qpsk",
         "name": "Demo QPSK",
+        "filename": "golden_qpsk.iq",
         "description": "QPSK baseband recording (50 kBaud, +2.4 kHz offset, 24 dB SNR, CCSDS-32 preamble)",
         "modulation": "QPSK"
     },
     {
         "key": "golden_2fsk",
         "name": "Demo FSK",
+        "filename": "golden_2fsk.iq",
         "description": "Continuous-Phase 2-FSK recording (25 kBaud, 12.5 kHz deviation, 20 dB SNR)",
         "modulation": "2FSK"
     },
     {
         "key": "golden_16qam",
         "name": "Demo 16-QAM",
+        "filename": "golden_16qam.iq",
         "description": "16-QAM constellation recording (40 kBaud, 28 dB SNR, Barker-13 sync)",
         "modulation": "16QAM"
     },
     {
         "key": "golden_noisy",
         "name": "Demo Noisy Signal",
+        "filename": "golden_noisy.iq",
         "description": "Degraded low-SNR QPSK signal (2 dB SNR, +15 kHz offset) demonstrating ambiguity handling",
-        "modulation": "QPSK / UNKNOWN"
+        "modulation": "QPSK"
     },
     {
         "key": "golden_unknown",
         "name": "Demo Unknown Signal",
+        "filename": "golden_unknown.iq",
         "description": "Colored Gaussian noise and unmodulated tones testing UNKNOWN fallback without forced classification",
         "modulation": "UNKNOWN"
     }
@@ -62,16 +68,22 @@ def list_demo_signals():
 def load_and_analyze_demo(
     demo_key: str,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
-    """Load a demo signal, create an analysis job, and run asynchronously."""
-    valid_keys = [p["key"] for p in DEMO_PRESETS]
-    if demo_key not in valid_keys:
-        raise HTTPException(status_code=404, detail=f"Demo key '{demo_key}' not recognized. Valid: {valid_keys}")
+    """Load a demo signal, create an analysis job, and queue it for DSP processing."""
+    preset = next((p for p in DEMO_PRESETS if p["key"] == demo_key), None)
+    if not preset:
+        valid_keys = [p["key"] for p in DEMO_PRESETS]
+        raise HTTPException(
+            status_code=404,
+            detail=f"Demo key '{demo_key}' not recognized. Valid keys: {valid_keys}"
+        )
 
     try:
         sig_file = FileService.load_demo_file(db, demo_name=demo_key)
-        job = JobService.create_job(db, signal_file_id=sig_file.id)
+        job = JobService.create_job(db, signal_file_id=sig_file.id, pipeline_config={"demo_key": demo_key})
         return job
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load demo signal: {str(e)}")

@@ -30,9 +30,9 @@ const DemosPage: React.FC = () => {
   }, []);
 
   const handleLoad = async (demo: DemoSignal) => {
-    setLaunching(demo.filename);
+    setLaunching(demo.key);
     try {
-      const { job } = await loadDemo(demo.filename);
+      const job = await loadDemo(demo.key);
       setActiveJobId(job.id);
       addToast('success', `Demo '${demo.name}' loaded — Job #${job.id} queued`);
       navigate(`/results/${job.id}`);
@@ -90,7 +90,7 @@ const DemosPage: React.FC = () => {
           {demos.map(demo => {
             const key = demo.modulation.toUpperCase().replace('-', '').replace('FSK', 'FSK').replace('QAM', 'QAM');
             const meta = MODULATION_DESCRIPTIONS[key] || MODULATION_DESCRIPTIONS[demo.modulation.toUpperCase()] || { color: '#00d4ff', desc: demo.description, bits: 1 };
-            const isLoading = launching === demo.filename;
+            const isLoading = launching === demo.key;
 
             return (
               <div

@@ -84,6 +84,7 @@ export interface ProcessingStage {
 }
 
 export interface DemoSignal {
+  key: string;
   name: string;
   modulation: string;
   filename: string;
@@ -143,10 +144,10 @@ export const getStages = async (jobId: number) =>
 
 // ─── Demo Endpoints ───────────────────────────────────────────────────────────
 
-export const listDemos = async () => (await api.get<DemoSignal[]>('/demos')).data;
+export const listDemos = async () => (await api.get<DemoSignal[]>('/demos/list')).data;
 
-export const loadDemo = async (filename: string) =>
-  (await api.post<{ file: SignalFile; job: AnalysisJob }>('/demos/load', { filename })).data;
+export const loadDemo = async (demoKey: string) =>
+  (await api.post<AnalysisJob>(`/demos/${demoKey}/load`)).data;
 
 // ─── Report Endpoints ─────────────────────────────────────────────────────────
 
