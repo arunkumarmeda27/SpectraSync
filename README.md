@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 # SpectraSync
 
@@ -11,7 +11,7 @@
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://typescriptlang.org)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docker.com)
-[![Tests](https://img.shields.io/badge/Tests-24%20Passing-10b981?style=flat-square&logo=pytest&logoColor=white)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-33%20Passing-10b981?style=flat-square&logo=pytest&logoColor=white)](#testing)
 [![License](https://img.shields.io/badge/License-MIT-f59e0b?style=flat-square)](LICENSE)
 
 </div>
@@ -20,7 +20,7 @@
 
 ## Overview
 
-**SpectraSync** is a production-grade Digital Signal Processing (DSP) platform designed for engineers, researchers, and signal intelligence analysts. Upload a raw `.IQ` or `.WAV` recording and SpectraSync automatically runs it through a 13-stage analysis pipeline — extracting carrier frequencies, identifying modulation schemes, recovering bit streams, and generating comprehensive reports.
+**SpectraSync** is a production-grade Digital Signal Processing (DSP) and automated signal intelligence platform designed for RF engineers, researchers, and defense analysts. Upload a raw `.IQ` or `.WAV` recording (or pick from the built-in Golden Vector Demo Suite) and SpectraSync automatically runs it through an end-to-end 13-stage analysis pipeline — estimating carrier frequencies, classifying modulations using higher-order cumulants and machine learning, recovering bit streams, and generating comprehensive forensic PDF reports.
 
 Built for the **Smart India Hackathon 2026 (SIH26147)** with a focus on automated signal intelligence at scale.
 
@@ -30,16 +30,18 @@ Built for the **Smart India Hackathon 2026 (SIH26147)** with a focus on automate
 
 | Category | Capability |
 |---|---|
-| **Ingestion** | `.IQ`, `.WAV`, `.complex`, `.bin`, `.dat` — up to 2 GB |
-| **DSP Pipeline** | 13 automated stages from raw samples to recovered bits |
-| **Modulation Detection** | BPSK, QPSK, 8-PSK, 16-QAM, 64-QAM, OFDM, FSK, AM, FM |
-| **Visualizations** | Time Domain, FFT Spectrum, Spectrogram/Waterfall, Constellation Diagram |
-| **Parameter Inference** | Sample Rate, Carrier Frequency, Bandwidth, Symbol Rate, SNR |
-| **Bit Stream Recovery** | De-interleaving, FEC Decoding, BER estimation |
-| **Reports** | PDF / HTML / CSV export with full analysis details |
-| **Job Management** | Queue-based job dispatch, history, real-time progress tracking |
-| **API** | Full REST API with OpenAPI/Swagger documentation |
-| **Deployment** | Docker Compose production stack (Nginx + FastAPI + Redis + Workers) |
+| **Ingestion** | `.IQ`, `.WAV`, `.complex`, `.bin`, `.dat` — up to 2 GB with SHA-256 integrity verification |
+| **DSP Pipeline** | 13 automated stages: DC removal, filtering, FFT, spectrogram, parameter estimation, modulation classification, carrier/clock recovery, demodulation, de-interleaving, FEC decoding, bitstream analysis, cross-correlation |
+| **Modulation Classification** | Hybrid cumulant ($C_{40}, C_{42}, C_{63}$) + Random Forest ML classifier (BPSK, QPSK, 8-PSK, 16-QAM, 64-QAM, 2-FSK, 4-FSK, AM, FM, UNKNOWN) |
+| **Visualizations** | Time Domain (I/Q), Welch FFT Spectrum, STFT Spectrogram/Waterfall, Constellation Diagram, Eye Diagram |
+| **Parameter Inference** | Sample Rate, Carrier Frequency, Bandwidth, Symbol Rate, SNR (Welch & EVM-based) |
+| **Bit Stream Recovery** | Block/Convolutional De-interleaving, Viterbi & Reed-Solomon FEC Decoding, Barker/CCSDS Frame Sync |
+| **Reports & Export** | Forensic PDF report (ReportLab), raw bitstream binary/hex, CSV metrics, and JSON analysis packages |
+| **Real-Time Progress** | Live WebSocket progress streaming (`/ws/jobs/{job_id}`) stage-by-stage |
+| **One-Click Demos** | Built-in Golden Vector demo signals (BPSK, QPSK, FSK, 16QAM, Noisy, Unknown) for immediate evaluation |
+| **Security & Auth** | JWT-based authentication, PBKDF2 password hashing, RBAC (Admin/Analyst) |
+| **API** | Full REST API with OpenAPI/Swagger documentation & WebSocket streaming |
+| **Deployment** | Multi-stage Docker Compose stack (Nginx + FastAPI + Redis + Worker Pool) |
 
 ---
 
@@ -189,10 +191,14 @@ curl http://localhost:8000/api/results/1024
 
 ```bash
 python -m pytest tests/ -v
-# 24 passed in ~11s
+# 33 passed in ~17s
 ```
 
-Coverage: file validation, all 13 DSP pipeline stages, REST API endpoints, end-to-end QPSK execution.
+**Test Coverage Highlights:**
+- **Golden Test Vectors**: Known-ground-truth verification on synthetic recordings (BPSK, QPSK, 2-FSK, 16-QAM, Unknown fallback).
+- **Authentication & Security**: PBKDF2 password hashing, JWT creation/validation, RBAC roles, protected endpoints.
+- **DSP Pipeline Stages**: DC removal, power normalization, FIR filtering, carrier frequency, bandwidth, SNR, cumulant feature extraction, PSK/QAM/FSK demodulation, Viterbi/Reed-Solomon codecs, bitstream extractor, Barker/CCSDS header detection, cross-correlation.
+- **Backend API & Workflows**: Health check probes, demo signal listing, end-to-end demo execution through the full pipeline.
 
 ---
 
