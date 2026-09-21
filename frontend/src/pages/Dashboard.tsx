@@ -854,7 +854,7 @@ const Dashboard: React.FC = () => {
                   <span style={{ color: '#f1f5f9', fontWeight: 600 }}>Job #{currentJob.id}</span>
                 </div>
                 <div style={{ color: '#94a3b8', fontSize: '0.7rem', paddingLeft: '1rem' }}>
-                  File: {currentJob.signal_file?.original_filename || 'Unknown'}
+                  File: {currentJob.signal_file?.original_filename || currentJob.signal_file?.filename || 'Unknown'}
                 </div>
                 <div style={{ color: '#94a3b8', fontSize: '0.7rem', paddingLeft: '1rem' }}>
                   Status: {currentJob.status}

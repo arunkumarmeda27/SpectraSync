@@ -32,6 +32,7 @@ api.interceptors.response.use(
 export interface SignalFile {
   id: number;
   filename: string;
+  original_filename?: string | null;
   format: string;
   size: number;
   checksum: string;
