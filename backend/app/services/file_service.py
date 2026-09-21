@@ -35,33 +35,59 @@ class FileService:
         center_frequency_override: Optional[float] = None
     ) -> SignalFile:
         """Store uploaded recording and persist metadata record."""
+        # Quick validation BEFORE writing to disk
+        import hashlib
+        suffix = Path(filename).suffix.lower()
+        file_size = len(content)
+
+        # Fast pre-checks
+        if file_size < 64:
+            raise ValueError(f"File too small ({file_size} bytes). Minimum required is 64 bytes.")
+        if file_size > 2 * 1024 * 1024 * 1024:
+            raise ValueError(f"File exceeds maximum size (2 GB).")
+
+        supported = {".iq", ".wav", ".bin", ".raw", ".sigmf-data", ".sigmf", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".oga", ".opus"}
+        if suffix not in supported:
+            raise ValueError(f"Unsupported file extension '{suffix}'.")
+
+        # Calculate checksum from in-memory content (avoid re-reading from disk)
+        checksum = hashlib.sha256(content).hexdigest()
+
+        # Quick format detection
+        if suffix == ".wav" and (len(content) < 12 or content[0:4] != b"RIFF" or content[8:12] != b"WAVE"):
+            raise ValueError("Malformed WAV file: Missing 'RIFF' or 'WAVE' container marker.")
+
+        # Determine format
+        audio_exts = {".mp3", ".m4a", ".aac", ".flac", ".ogg", ".oga", ".opus"}
+        if suffix in audio_exts:
+            detected_format = "audio"
+        elif suffix == ".wav":
+            detected_format = "wav"
+        elif suffix in [".sigmf-data", ".sigmf"]:
+            detected_format = "sigmf"
+        else:
+            detected_format = "iq"
+
         # 1. Save to storage
         storage_rel_path = storage_service.save_file(filename, content, subfolder="recordings")
         abs_path = storage_service.get_file_path(storage_rel_path)
 
-        # 2. Validate
-        val_res = FileValidator.validate(abs_path)
-        if not val_res.is_valid:
-            storage_service.delete_file(storage_rel_path)
-            raise ValueError(val_res.error_message or "Invalid file format")
-
-        # 3. Calculate checksum & extract metadata
-        checksum = calculate_sha256(abs_path)
+        # 2. Extract metadata (lightweight, only if needed)
         meta = MetadataExtractor.get_metadata(abs_path)
 
         sample_rate = sample_rate_override or meta.get("sample_rate", 1_000_000.0)
         center_freq = center_frequency_override or meta.get("center_frequency", 0.0)
         channels = meta.get("channels", 2)
-        if val_res.detected_format in {"wav", "audio"}:
+        if detected_format in {"wav", "audio"}:
             sample_fmt = "pcm16"
         else:
             sample_fmt = "complex64"
 
-        # 4. Save to database
+        # 3. Save to database
         db_file = SignalFile(
             filename=filename,
-            format=val_res.detected_format,
-            size=len(content),
+            format=detected_format,
+            size=file_size,
             sample_rate=sample_rate,
             channels=channels,
             sample_format=sample_fmt,

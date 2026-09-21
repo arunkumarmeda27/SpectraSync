@@ -15,6 +15,7 @@ const VisualizationsPage: React.FC = () => {
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [activeView, setActiveView] = useState<'all' | 'waveform' | 'fft' | 'waterfall' | 'constellation'>('all');
 
   const loadJobs = async () => {
@@ -37,11 +38,14 @@ const VisualizationsPage: React.FC = () => {
   };
 
   const loadAnalysis = async (jobId: number) => {
+    setLoadingAnalysis(true);
     try {
       const analysisResult = await getAnalysisResult(jobId);
       setResult(analysisResult);
     } catch (err) {
       addToast('error', 'Failed to load analysis result');
+    } finally {
+      setLoadingAnalysis(false);
     }
   };
 
@@ -55,11 +59,11 @@ const VisualizationsPage: React.FC = () => {
     }
   }, [selectedJobId]);
 
-  if (loading) {
+  if (loading || loadingAnalysis) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '2rem' }}>
-        <RefreshCw size={24} className="spin" />
-        <span style={{ color: '#94a3b8' }}>Loading analysis jobs...</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', padding: '4rem' }}>
+        <RefreshCw size={24} className="spin" style={{ color: '#3b82f6' }} />
+        <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Loading visualizations...</span>
       </div>
     );
   }
@@ -72,6 +76,15 @@ const VisualizationsPage: React.FC = () => {
         <p style={{ color: '#475569', fontSize: '0.85rem' }}>
           Upload a signal file from the <b>Upload & Analyze</b> page to see visualizations here.
         </p>
+      </div>
+    );
+  }
+
+  if (!result) {
+    return (
+      <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
+        <AlertCircle size={48} style={{ opacity: 0.3, marginBottom: '1rem', color: '#64748b' }} />
+        <p style={{ color: '#64748b' }}>No visualization data available for this job yet.</p>
       </div>
     );
   }
