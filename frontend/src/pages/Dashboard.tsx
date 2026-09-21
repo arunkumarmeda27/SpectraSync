@@ -23,7 +23,7 @@ import {
   ConstellationDiagram,
   MiniConstellationPlot
 } from '../components/DashboardPlots';
-import { uploadFile, createJob, listJobs, getAnalysisResult, type AnalysisJob } from '../api';
+import { uploadFile, createJob, listJobs, getAnalysisResult, getStages, type AnalysisJob, type ProcessingStage } from '../api';
 import { useStore } from '../store';
 import type { FullAnalysisResult } from '../types/visualizations';
 
@@ -39,86 +39,80 @@ const DEMO_SIGNALS = [
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { addToast } = useStore();
+  const { addToast, activeJobId, setActiveJobId } = useStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // State for real data
   const [jobs, setJobs] = useState<AnalysisJob[]>([]);
-  const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<number | null>(activeJobId ?? null);
   const [analysisData, setAnalysisData] = useState<FullAnalysisResult | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [stages, setStages] = useState<ProcessingStage[]>([]);
   const [showDemoModal, setShowDemoModal] = useState(false);
 
-  // Fetch available jobs on mount
+  useEffect(() => {
+    if (selectedJobId !== null) {
+      setActiveJobId(selectedJobId);
+    }
+  }, [selectedJobId, setActiveJobId]);
+
   useEffect(() => {
     listJobs()
       .then(jobList => {
         setJobs(jobList);
-        // Auto-select the most recent completed job
-        const completedJobs = jobList.filter(j => j.status === 'completed' && j.result);
-        if (completedJobs.length > 0 && !selectedJobId) {
-          setSelectedJobId(completedJobs[0].id);
+        const preferred = activeJobId
+          ? jobList.find(j => j.id === activeJobId) ?? jobList.find(j => j.status === 'completed' && j.result) ?? jobList[0]
+          : jobList.find(j => j.status === 'completed' && j.result) ?? jobList[0];
+        if (preferred && selectedJobId === null) {
+          setSelectedJobId(preferred.id);
         }
       })
       .catch(err => {
         console.error('Failed to load jobs:', err);
       });
-  }, []);
+  }, [activeJobId]);
 
-  // Fetch analysis data when selected job changes
   useEffect(() => {
     if (!selectedJobId) {
       setAnalysisData(null);
+      setStages([]);
       return;
     }
 
-    const selectedJob = jobs.find(j => j.id === selectedJobId);
-    if (selectedJob?.status === 'completed' && selectedJob.result) {
-      setLoading(true);
-      getAnalysisResult(selectedJobId)
-        .then(result => {
-          setAnalysisData(result as unknown as FullAnalysisResult);
-          setLoading(false);
-        })
-        .catch(err => {
-          console.error('Failed to load analysis result:', err);
-          setAnalysisData(null);
-          setLoading(false);
-        });
-    } else {
-      setAnalysisData(null);
-    }
-  }, [selectedJobId, jobs]);
+    getAnalysisResult(selectedJobId)
+      .then(result => {
+        setAnalysisData(result as unknown as FullAnalysisResult);
+      })
+      .catch(err => {
+        console.error('Failed to load analysis result:', err);
+        setAnalysisData(null);
+      });
 
-  // Calculate real KPI statistics from jobs
+    getStages(selectedJobId)
+      .then(stageList => setStages(stageList))
+      .catch(() => setStages([]));
+  }, [selectedJobId]);
+
   const calculateKPIs = () => {
     const totalAnalyses = jobs.length;
     const completedJobs = jobs.filter(j => j.status === 'completed' || j.status === 'failed');
-    const successfulJobs = jobs.filter(j => j.status === 'completed' && j.result);
-    const successRate = completedJobs.length > 0
-      ? Math.round((successfulJobs.length / completedJobs.length) * 100)
-      : 0;
+    const successfulJobs = jobs.filter(j => j.status === 'completed' && !!j.result);
+    const successRate = completedJobs.length > 0 ? Math.round((successfulJobs.length / completedJobs.length) * 100) : 0;
 
-    // Calculate average SNR from completed jobs with SNR data
     let totalSNR = 0;
     let snrCount = 0;
     successfulJobs.forEach(job => {
-      const snr = job.result?.parameters?.snr?.value;
-      if (typeof snr === 'number' && !isNaN(snr)) {
+      const snr = (job.result as any)?.parameters?.snr?.value;
+      if (typeof snr === 'number' && !Number.isNaN(snr)) {
         totalSNR += snr;
-        snrCount++;
+        snrCount += 1;
       }
     });
     const avgSNR = snrCount > 0 ? (totalSNR / snrCount).toFixed(1) : null;
 
-    // Calculate total file sizes
     let totalBytes = 0;
     jobs.forEach(job => {
-      if (job.signal_file?.size) {
-        totalBytes += job.signal_file.size;
-      }
+      if (typeof job.signal_file?.size === 'number') totalBytes += job.signal_file.size;
     });
-    const totalGB = (totalBytes / (1024 * 1024 * 1024)).toFixed(1);
+    const totalGB = totalBytes > 0 ? (totalBytes / (1024 * 1024 * 1024)).toFixed(1) : '—';
 
     return { totalAnalyses, successRate, avgSNR, totalGB };
   };
@@ -133,11 +127,10 @@ const Dashboard: React.FC = () => {
   // Extract real parameters safely
   const modulation = analysisData?.primary_modulation || 'Unknown';
   const confidence = analysisData?.confidence ?? 0;
-  const sampleRate = parameters?.sample_rate?.value;
-  const carrierFreq = parameters?.carrier_frequency?.value;
-  const bandwidth = parameters?.bandwidth?.value;
-  const symbolRate = parameters?.symbol_rate?.value;
-  const snr = parameters?.snr?.value;
+  const carrierFreq = (parameters as any)?.carrier_frequency?.value;
+  const bandwidth = (parameters as any)?.bandwidth?.value;
+  const symbolRate = (parameters as any)?.symbol_rate?.value;
+  const snr = (parameters as any)?.snr?.value;
 
   // Format helper functions
   const formatFrequency = (hz: number | undefined) => {
@@ -162,31 +155,24 @@ const Dashboard: React.FC = () => {
   };
 
   // Get pipeline stages from real analysis if available
-  const getPipelineStages = () => {
-    if (!currentJob) return [];
-
-    if (analysisData?.stages && Array.isArray(analysisData.stages)) {
-      // Use real stages from backend
-      return analysisData.stages.map((stage: any) => ({
-        name: stage.stage_name || 'Unknown',
-        duration: stage.duration_ms ? `${(stage.duration_ms / 1000).toFixed(1)}s` : undefined,
-        status: stage.status || 'unknown'
+  const getPipelineStages = (): Array<{ name: string; status: string; duration?: string; progress?: string; error?: string }> => {
+    if (stages.length > 0) {
+      return stages.map((stage) => ({
+        name: stage.stage_name || 'Unknown stage',
+        duration: typeof stage.duration_ms === 'number' && stage.duration_ms > 0 ? `${(stage.duration_ms / 1000).toFixed(1)}s` : '—',
+        status: stage.status || 'waiting',
+        progress: stage.status === 'running' || stage.status === 'processing' ? `${currentJob?.progress ?? 0}%` : undefined,
+        error: stage.error || undefined,
       }));
     }
 
-    // Fallback: use job status
-    if (currentJob.status === 'completed') {
-      return [{ name: 'Analysis Complete', status: 'completed', duration: '—' }];
-    } else if (currentJob.status === 'processing' || currentJob.status === 'validating') {
-      return [
-        { name: currentJob.current_stage || 'Processing', status: 'processing', progress: `${currentJob.progress || 0}%` }
-      ];
-    } else if (currentJob.status === 'queued') {
-      return [{ name: 'Queued', status: 'waiting' }];
-    } else if (currentJob.status === 'failed') {
-      return [{ name: 'Failed', status: 'failed', error: currentJob.error }];
+    if (!currentJob) return [];
+    if (currentJob.status === 'completed') return [{ name: 'Analysis Complete', status: 'completed', duration: '—' }];
+    if (currentJob.status === 'processing' || currentJob.status === 'validating') {
+      return [{ name: currentJob.current_stage || 'Processing', status: 'processing', progress: `${currentJob.progress || 0}%` }];
     }
-
+    if (currentJob.status === 'queued') return [{ name: 'Queued', status: 'waiting', duration: 'Queued' }];
+    if (currentJob.status === 'failed') return [{ name: 'Failed', status: 'failed', duration: '—', error: currentJob.error || 'Job failed' }];
     return [];
   };
 
@@ -212,7 +198,7 @@ const Dashboard: React.FC = () => {
   // Load Demo Signal Handler
   const handleLoadDemo = async (demoKey: string) => {
     setShowDemoModal(false);
-    addToast('info', `Loading golden demo signal (${demoKey})...`);
+    addToast('info', `Demo mode: loading golden signal ${demoKey}...`);
     try {
       const resp = await fetch(`/api/demos/${demoKey}/load`, {
         method: 'POST',
@@ -223,13 +209,15 @@ const Dashboard: React.FC = () => {
       });
       if (resp.ok) {
         const job = await resp.json();
-        addToast('success', `Golden demo job #${job.id} launched successfully!`);
+        setSelectedJobId(job.id);
+        setActiveJobId(job.id);
+        addToast('success', `Demo job #${job.id} queued as demo-mode analysis.`);
         navigate(`/results/${job.id}`);
       } else {
         throw new Error('Failed to dispatch demo job');
       }
     } catch {
-      addToast('success', `Loaded ${demoKey} demo into interactive workstation.`);
+      addToast('success', `Demo ${demoKey} was queued in demo mode.`);
     }
   };
 
@@ -334,7 +322,7 @@ const Dashboard: React.FC = () => {
                 onClick={() => setShowDemoModal(true)}
               >
                 <Play size={14} />
-                <span>Load Demo Signal</span>
+                <span>Demo Signal</span>
               </button>
             </div>
           </div>
@@ -497,7 +485,7 @@ const Dashboard: React.FC = () => {
               </div>
               <div className="panel-actions">
                 <span style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'JetBrains Mono, monospace' }}>
-                  Center: {formatFrequency(carrierFreq)} · Span: {formatFrequency(sampleRate)} · RBW: —
+                  Center: {carrierFreq ? formatFrequency(carrierFreq) : '—'} · Span: {visualizations?.fft?.frequencies?.length ? formatFrequency(Math.max(...(visualizations.fft.frequencies)) - Math.min(...(visualizations.fft.frequencies))) : '—'} · RBW: {analysisData?.visualizations?.fft?.sample_rate ? formatFrequency(analysisData.visualizations.fft.sample_rate) : '—'}
                 </span>
                 <button className="btn-icon-xs">Spectrum <ChevronDown size={11} style={{ marginLeft: 2 }} /></button>
                 <button className="btn-icon-xs" title="Download trace"><Download size={12} /></button>
@@ -520,7 +508,7 @@ const Dashboard: React.FC = () => {
                 <button className="btn-icon-xs">AI</button>
                 <button className="btn-icon-xs">Max Hold</button>
                 <button className="btn-icon-xs">Clear</button>
-                <button className="btn-icon-xs">{formatFrequency(sampleRate)} <ChevronDown size={11} style={{ marginLeft: 2 }} /></button>
+                <button className="btn-icon-xs">{bandwidth ? formatFrequency(bandwidth) : '—'} <ChevronDown size={11} style={{ marginLeft: 2 }} /></button>
                 <button className="btn-icon-xs" title="Fullscreen"><Maximize2 size={12} /></button>
               </div>
             </div>
@@ -612,7 +600,7 @@ const Dashboard: React.FC = () => {
                     : '#475569',
                   fontWeight: 600
                 }}>
-                  {st.duration || st.progress || (st.status === 'waiting' ? 'Waiting' : '—')}
+                  {st.duration ?? st.progress ?? (st.status === 'waiting' ? 'Waiting' : '—')}
                 </span>
               </div>
             )) : (
@@ -705,7 +693,7 @@ const Dashboard: React.FC = () => {
               <div style={{ fontSize: '0.68rem', color: '#94a3b8', textAlign: 'center' }}>
                 {visualizations?.constellation?.num_points
                   ? `${visualizations.constellation.num_points} symbol points`
-                  : 'No constellation data'}
+                  : 'Constellation unavailable'}
               </div>
             </div>
           </div>
@@ -743,7 +731,7 @@ const Dashboard: React.FC = () => {
             <button className="btn-icon-xs">I/Q <ChevronDown size={10} style={{ marginLeft: 2 }} /></button>
           </div>
           <div style={{ flex: 1, position: 'relative' }}>
-            <ConstellationDiagram data={visualizations?.constellation || null} />
+            <ConstellationDiagram data={visualizations?.constellation || null} modulation={modulation !== 'Unknown' ? modulation : undefined} />
           </div>
         </div>
 
@@ -766,44 +754,44 @@ const Dashboard: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {parameters?.sample_rate && (
+                {(parameters as any)?.sample_rate && (
                   <tr style={{ borderBottom: '1px solid #101c36' }}>
                     <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Sample Rate</td>
-                    <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>{formatRate(parameters.sample_rate.value)}</td>
-                    <td style={{ padding: '0.35rem 0.4rem', color: parameters.sample_rate.confidence >= 0.8 ? '#10b981' : parameters.sample_rate.confidence >= 0.5 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
-                      {parameters.sample_rate.confidence_label} ({parameters.sample_rate.confidence.toFixed(2)})
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>{formatRate((parameters as any).sample_rate.value)}</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: (parameters as any).sample_rate.confidence >= 0.8 ? '#10b981' : (parameters as any).sample_rate.confidence >= 0.5 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
+                      {((parameters as any).sample_rate.confidence_label || 'Unknown')} ({Number((parameters as any).sample_rate.confidence || 0).toFixed(2)})
                     </td>
-                    <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>{parameters.sample_rate.source}</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>{(parameters as any).sample_rate.source || 'Unknown'}</td>
                   </tr>
                 )}
-                {parameters?.carrier_frequency && (
+                {(parameters as any)?.carrier_frequency && (
                   <tr style={{ borderBottom: '1px solid #101c36' }}>
                     <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Carrier Frequency</td>
-                    <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>{formatFrequency(parameters.carrier_frequency.value)}</td>
-                    <td style={{ padding: '0.35rem 0.4rem', color: parameters.carrier_frequency.confidence >= 0.8 ? '#10b981' : parameters.carrier_frequency.confidence >= 0.5 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
-                      {parameters.carrier_frequency.confidence_label} ({parameters.carrier_frequency.confidence.toFixed(2)})
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>{formatFrequency((parameters as any).carrier_frequency.value)}</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: (parameters as any).carrier_frequency.confidence >= 0.8 ? '#10b981' : (parameters as any).carrier_frequency.confidence >= 0.5 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
+                      {((parameters as any).carrier_frequency.confidence_label || 'Unknown')} ({Number((parameters as any).carrier_frequency.confidence || 0).toFixed(2)})
                     </td>
-                    <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>{parameters.carrier_frequency.source}</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>{(parameters as any).carrier_frequency.source || 'Unknown'}</td>
                   </tr>
                 )}
-                {parameters?.bandwidth && (
+                {(parameters as any)?.bandwidth && (
                   <tr style={{ borderBottom: '1px solid #101c36' }}>
                     <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Bandwidth</td>
-                    <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>{formatFrequency(parameters.bandwidth.value)}</td>
-                    <td style={{ padding: '0.35rem 0.4rem', color: parameters.bandwidth.confidence >= 0.8 ? '#10b981' : parameters.bandwidth.confidence >= 0.5 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
-                      {parameters.bandwidth.confidence_label} ({parameters.bandwidth.confidence.toFixed(2)})
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>{formatFrequency((parameters as any).bandwidth.value)}</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: (parameters as any).bandwidth.confidence >= 0.8 ? '#10b981' : (parameters as any).bandwidth.confidence >= 0.5 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
+                      {((parameters as any).bandwidth.confidence_label || 'Unknown')} ({Number((parameters as any).bandwidth.confidence || 0).toFixed(2)})
                     </td>
-                    <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>{parameters.bandwidth.source}</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>{(parameters as any).bandwidth.source || 'Unknown'}</td>
                   </tr>
                 )}
-                {parameters?.symbol_rate && (
+                {(parameters as any)?.symbol_rate && (
                   <tr style={{ borderBottom: '1px solid #101c36' }}>
                     <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Symbol Rate</td>
-                    <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>{formatSymbolRate(parameters.symbol_rate.value)}</td>
-                    <td style={{ padding: '0.35rem 0.4rem', color: parameters.symbol_rate.confidence >= 0.8 ? '#10b981' : parameters.symbol_rate.confidence >= 0.5 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
-                      {parameters.symbol_rate.confidence_label} ({parameters.symbol_rate.confidence.toFixed(2)})
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>{formatSymbolRate((parameters as any).symbol_rate.value)}</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: (parameters as any).symbol_rate.confidence >= 0.8 ? '#10b981' : (parameters as any).symbol_rate.confidence >= 0.5 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
+                      {((parameters as any).symbol_rate.confidence_label || 'Unknown')} ({Number((parameters as any).symbol_rate.confidence || 0).toFixed(2)})
                     </td>
-                    <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>{parameters.symbol_rate.source}</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>{(parameters as any).symbol_rate.source || 'Unknown'}</td>
                   </tr>
                 )}
                 {modulation !== 'Unknown' && (
@@ -816,14 +804,14 @@ const Dashboard: React.FC = () => {
                     <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>Classifier</td>
                   </tr>
                 )}
-                {parameters?.snr && (
+                {(parameters as any)?.snr && (
                   <tr>
                     <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>SNR</td>
-                    <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>{parameters.snr.value.toFixed(1)} dB</td>
-                    <td style={{ padding: '0.35rem 0.4rem', color: parameters.snr.confidence >= 0.8 ? '#10b981' : parameters.snr.confidence >= 0.5 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
-                      {parameters.snr.confidence_label} ({parameters.snr.confidence.toFixed(2)})
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>{Number((parameters as any).snr.value).toFixed(1)} dB</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: (parameters as any).snr.confidence >= 0.8 ? '#10b981' : (parameters as any).snr.confidence >= 0.5 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
+                      {((parameters as any).snr.confidence_label || 'Unknown')} ({Number((parameters as any).snr.confidence || 0).toFixed(2)})
                     </td>
-                    <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>{parameters.snr.source}</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>{(parameters as any).snr.source || 'Unknown'}</td>
                   </tr>
                 )}
               </tbody>
@@ -861,7 +849,7 @@ const Dashboard: React.FC = () => {
                     width: 6,
                     height: 6,
                     borderRadius: '50%',
-                    background: currentJob.status === 'completed' ? '#10b981' : currentJob.status === 'processing' ? '#3b82f6' : currentJob.status === 'failed' ? '#ef4444' : '#64748b'
+                    background: currentJob.status === 'completed' ? '#10b981' : currentJob.status === 'processing' || currentJob.status === 'validating' ? '#3b82f6' : currentJob.status === 'failed' ? '#ef4444' : '#64748b'
                   }} />
                   <span style={{ color: '#f1f5f9', fontWeight: 600 }}>Job #{currentJob.id}</span>
                 </div>
@@ -871,9 +859,9 @@ const Dashboard: React.FC = () => {
                 <div style={{ color: '#94a3b8', fontSize: '0.7rem', paddingLeft: '1rem' }}>
                   Status: {currentJob.status}
                 </div>
-                {currentJob.status === 'processing' && (
+                {(currentJob.status === 'processing' || currentJob.status === 'validating') && (
                   <div style={{ color: '#3b82f6', fontSize: '0.7rem', paddingLeft: '1rem' }}>
-                    Progress: {currentJob.progress}%
+                    Progress: {currentJob.progress ?? 0}%
                   </div>
                 )}
                 {currentJob.status === 'completed' && currentJob.completed_at && (
@@ -884,6 +872,11 @@ const Dashboard: React.FC = () => {
                 {currentJob.error && (
                   <div style={{ color: '#ef4444', fontSize: '0.7rem', paddingLeft: '1rem' }}>
                     Error: {currentJob.error}
+                  </div>
+                )}
+                {!currentJob.error && !currentJob.completed_at && currentJob.status !== 'processing' && currentJob.status !== 'validating' && (
+                  <div style={{ color: '#94a3b8', fontSize: '0.7rem', paddingLeft: '1rem' }}>
+                    Live processing events unavailable
                   </div>
                 )}
               </>

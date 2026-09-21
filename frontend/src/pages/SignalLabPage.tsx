@@ -7,34 +7,46 @@ import {
   RealConstellationDiagram
 } from '../components/SignalLabPlots';
 import { listJobs, getAnalysisResult, type AnalysisJob } from '../api';
+import { useStore } from '../store';
 import type { FullAnalysisResult } from '../types/visualizations';
 
 const SignalLabPage: React.FC = () => {
+  const { activeJobId, setActiveJobId } = useStore();
   const [jobs, setJobs] = useState<AnalysisJob[]>([]);
-  const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<number | null>(activeJobId ?? null);
   const [analysisData, setAnalysisData] = useState<FullAnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<'all' | 'waveform' | 'fft' | 'waterfall' | 'constellation'>('all');
 
+  useEffect(() => {
+    if (selectedJobId !== null) {
+      setActiveJobId(selectedJobId);
+    }
+  }, [selectedJobId, setActiveJobId]);
+
   // Fetch available jobs on mount
   useEffect(() => {
-    listJobs()
-      .then(jobList => {
-        // Filter to only completed jobs with results
-        const completedJobs = jobList.filter(j => j.status === 'completed' && j.result);
-        setJobs(completedJobs);
+    const refreshJobs = async () => {
+      try {
+        const jobList = await listJobs();
+        const filteredJobs = jobList.filter(j => j.status === 'completed' || j.result || j.status === 'processing' || j.status === 'queued' || j.status === 'validating');
+        setJobs(filteredJobs);
 
-        // Auto-select the first completed job
-        if (completedJobs.length > 0 && !selectedJobId) {
-          setSelectedJobId(completedJobs[0].id);
+        const preferred = activeJobId
+          ? filteredJobs.find(j => j.id === activeJobId) ?? filteredJobs[0]
+          : filteredJobs[0];
+        if (preferred && !selectedJobId) {
+          setSelectedJobId(preferred.id);
         }
-      })
-      .catch(err => {
+      } catch (err) {
         console.error('Failed to load jobs:', err);
         setError('Failed to load analysis jobs');
-      });
-  }, []);
+      }
+    };
+
+    refreshJobs();
+  }, [activeJobId]);
 
   // Fetch analysis data when selected job changes
   useEffect(() => {
