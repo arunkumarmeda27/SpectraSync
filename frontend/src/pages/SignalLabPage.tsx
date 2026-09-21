@@ -163,7 +163,7 @@ const SignalLabPage: React.FC = () => {
             >
               {jobs.map(j => (
                 <option key={j.id} value={j.id}>
-                  #{j.id} - {j.signal_file?.original_filename || j.signal_file?.filename || 'Analysis Job'} ({j.result?.primary_modulation || 'Unknown'})
+                  #{j.id} - {j.signal_file?.filename || 'Analysis Job'} ({j.result?.primary_modulation || 'Unknown'})
                 </option>
               ))}
             </select>
@@ -344,7 +344,7 @@ const SignalLabPage: React.FC = () => {
           justifyContent: 'space-between'
         }}>
           <span>
-            File: {currentJob.signal_file?.original_filename || currentJob.signal_file?.filename || 'Unknown'}
+            File: {currentJob.signal_file?.filename || 'Unknown'}
             {currentJob.signal_file?.size && ` (${(currentJob.signal_file.size / 1024 / 1024).toFixed(2)} MB)`}
           </span>
           <span>

@@ -15,6 +15,37 @@ import {
   Spinner, fmtFreq
 } from '../components/Shared';
 import { useStore } from '../store';
+import type { FullAnalysisResult } from '../types/visualizations';
+
+const parameterValue = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (value && typeof value === 'object' && 'value' in value) {
+    const nested = (value as { value?: unknown }).value;
+    return typeof nested === 'number' && Number.isFinite(nested) ? nested : null;
+  }
+  return null;
+};
+
+const normalizeAnalysisResult = (raw: AnalysisResult & Partial<FullAnalysisResult>): AnalysisResult => {
+  const parameters = raw.parameters || {};
+  const modulation = raw.modulation;
+  const demodulation = raw.demodulation || raw.demodulation_data || {};
+  const synchronization = raw.synchronization || raw.synchronization_data || {};
+  const visualizations = raw.visualizations || {};
+  const candidates = raw.modulation_candidates || modulation?.candidates || [];
+
+  return {
+    ...raw,
+    parameters,
+    modulation_candidates: candidates.map((candidate) => ({
+      modulation: candidate.modulation,
+      confidence: candidate.confidence ?? (candidate as { probability?: number }).probability ?? 0,
+    })),
+    synchronization_data: synchronization,
+    demodulation_data: demodulation,
+    visualizations,
+  };
+};
 
 // ─── WebSocket progress hook ──────────────────────────────────────────────────
 function useJobWs(jobId: number, onUpdate: (d: Record<string, unknown>) => void) {
@@ -167,7 +198,7 @@ const ResultsViewer: React.FC = () => {
       if (j.status === 'completed') {
         try {
           const [r, st] = await Promise.all([getAnalysisResult(id), getStages(id)]);
-          setResult(r);
+          setResult(normalizeAnalysisResult(r as AnalysisResult & Partial<FullAnalysisResult>));
           setStages(st);
         } catch { /* result may not exist yet */ }
       } else if (j.status !== 'failed') {
@@ -342,11 +373,11 @@ const ResultsViewer: React.FC = () => {
                 <div className="card">
                   <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.75rem' }}>Signal Parameters</div>
                   {[
-                    { label: 'Sample Rate', val: fmtFreq((params.sample_rate as number) ?? null) },
-                    { label: 'Carrier Freq', val: fmtFreq((params.carrier_frequency_hz as number) ?? null) },
-                    { label: 'Bandwidth', val: fmtFreq((params.bandwidth_hz as number) ?? null) },
-                    { label: 'Symbol Rate', val: (params.symbol_rate_baud as number) ? `${((params.symbol_rate_baud as number)/1e3).toFixed(2)} kBd` : '—' },
-                    { label: 'SNR', val: (params.snr_db as number) != null ? `${(params.snr_db as number).toFixed(1)} dB` : '—' },
+                    { label: 'Sample Rate', val: fmtFreq(parameterValue(params.sample_rate)) },
+                    { label: 'Carrier Freq', val: fmtFreq(parameterValue(params.carrier_frequency)) },
+                    { label: 'Bandwidth', val: fmtFreq(parameterValue(params.bandwidth)) },
+                    { label: 'Symbol Rate', val: parameterValue(params.symbol_rate) ? `${(parameterValue(params.symbol_rate)! / 1e3).toFixed(2)} kBd` : '—' },
+                    { label: 'SNR', val: parameterValue(params.snr) != null ? `${parameterValue(params.snr)!.toFixed(1)} dB` : '—' },
                   ].map(row => (
                     <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.2rem 0', fontSize: '0.8rem', borderBottom: '1px solid var(--border-subtle)' }}>
                       <span style={{ color: 'var(--text-muted)' }}>{row.label}</span>
@@ -398,7 +429,7 @@ const ResultsViewer: React.FC = () => {
           {/* ── SPECTRUM TAB ── */}
           {activeTab === 'spectrum' && (
             <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {Boolean((vizData as Record<string, unknown>).fft_magnitude) && (
+              {Boolean((vizData as Record<string, unknown>).fft) && (
                 <div className="viz-container">
                   <div className="viz-header">
                     <span className="viz-label">FFT Spectrum</span>
@@ -408,26 +439,29 @@ const ResultsViewer: React.FC = () => {
                   </div>
                   <div className="viz-body">
                     <SpectrumChart
-                      data={(vizData as Record<string, number[]>).fft_magnitude}
-                      sampleRate={params.sample_rate as number}
+                      data={((vizData as Record<string, { magnitudes_db?: number[] }>).fft).magnitudes_db || []}
+                      sampleRate={parameterValue(params.sample_rate) || undefined}
                     />
                   </div>
                 </div>
               )}
 
-              {Boolean((vizData as Record<string, unknown>).constellation_points) && (
+              {Boolean((vizData as Record<string, unknown>).constellation) && (
                 <div className="viz-container">
                   <div className="viz-header">
                     <span className="viz-label">I/Q Constellation</span>
                     <span className="badge badge-cyan">{result.primary_modulation}</span>
                   </div>
                   <div className="viz-body">
-                    <ConstellationChart points={(vizData as Record<string, Array<{ i: number; q: number }>>).constellation_points} />
+                    <ConstellationChart points={(() => {
+                      const constellation = (vizData as Record<string, { i?: number[]; q?: number[] }>).constellation;
+                      return (constellation.i || []).map((i, index) => ({ i, q: (constellation.q || [])[index] || 0 }));
+                    })()} />
                   </div>
                 </div>
               )}
 
-              {!Boolean((vizData as Record<string, unknown>).fft_magnitude) && (
+              {!Boolean((vizData as Record<string, unknown>).fft) && (
                 <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
                   <Waves size={48} style={{ opacity: 0.3, marginBottom: '1rem' }} />
                   <p style={{ color: 'var(--text-muted)' }}>Spectrum visualization data not available for this job.</p>

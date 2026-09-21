@@ -1,10 +1,23 @@
-// Upload page with drag-and-drop and job launch
+// Upload & Analyze Page - Professional Signal Ingestion Workstation
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, FileAudio, X, CheckCircle, Play, Settings2 } from 'lucide-react';
+import {
+  Upload,
+  FileAudio,
+  X,
+  CheckCircle,
+  Play,
+  Settings2,
+  AlertCircle,
+  Radio,
+  FileCode,
+  Database,
+  Activity,
+  Info
+} from 'lucide-react';
 import { uploadFile, createJob, type SignalFile } from '../api';
 import { useStore } from '../store';
-import { ProgressBar, fmtSize, Spinner } from '../components/Shared';
+import { ProgressBar, fmtSize, Spinner, SectionHeader, EmptyState } from '../components/Shared';
 
 const ACCEPTED_EXTS = ['.iq', '.wav', '.mp3', '.m4a', '.aac', '.flac', '.ogg', '.opus', '.complex', '.bin', '.dat'];
 
@@ -52,16 +65,12 @@ const UploadPage: React.FC = () => {
     if (!selectedFile) return;
     setUploading(true);
     try {
-      const sf = await uploadFile(selectedFile, p => setUploadProgress(p));
+      const sf = await uploadFile(selectedFile, (p) => setUploadProgress(p));
       setUploadedFile(sf);
-      addToast('success', `Uploaded: ${sf.filename}. Starting analysis...`);
-
-      const job = await createJob(sf.id, config);
-      setActiveJobId(job.id);
-      addToast('success', `Analysis job #${job.id} started`);
-      navigate(`/results/${job.id}`);
+      addToast('success', `File validated (SHA-256 verified). Ready for analysis.`);
     } catch (err: unknown) {
       addToast('error', err instanceof Error ? err.message : 'Upload failed');
+      setUploading(false);
     } finally {
       setUploading(false);
     }
@@ -73,7 +82,7 @@ const UploadPage: React.FC = () => {
     try {
       const job = await createJob(uploadedFile.id, config);
       setActiveJobId(job.id);
-      addToast('success', `Analysis job #${job.id} queued`);
+      addToast('success', `Analysis job #${job.id} dispatched to DSP pipeline`);
       navigate(`/results/${job.id}`);
     } catch (err: unknown) {
       addToast('error', err instanceof Error ? err.message : 'Failed to create job');
@@ -90,176 +99,418 @@ const UploadPage: React.FC = () => {
   };
 
   return (
-    <div className="animate-fade-in" style={{ maxWidth: 720 }}>
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.25rem' }}>Upload Signal</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Supported formats: <code className="mono">.iq</code>, <code className="mono">.wav</code>, <code className="mono">.complex</code>, <code className="mono">.bin</code>, <code className="mono">.dat</code> — max 500 MB
-        </p>
-      </div>
+    <div className="animate-fade-in">
+      <SectionHeader
+        title="Upload & Analyze Signal Recording"
+        subtitle="Professional signal ingestion, validation, and automated DSP analysis pipeline dispatch"
+        icon={<Upload size={18} />}
+        tag="UPLOAD STATION"
+      />
 
-      {/* Drop Zone */}
-      {!uploadedFile && (
-        <div
-          className={`upload-zone ${dragOver ? 'drag-over' : ''}`}
-          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-          onClick={() => !selectedFile && fileRef.current?.click()}
-          style={{ cursor: selectedFile ? 'default' : 'pointer' }}
-        >
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".iq,.wav,.mp3,.m4a,.aac,.flac,.ogg,.opus,.complex,.bin,.dat"
-            style={{ display: 'none' }}
-            onChange={e => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
-          />
-
-          {!selectedFile ? (
+      <div style={{ display: 'grid', gridTemplateColumns: uploadedFile ? '1.2fr 1fr' : '1fr', gap: '1.25rem', maxWidth: '1200px' }}>
+        {/* Left Column: Upload Zone */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {!uploadedFile && (
             <>
-              <div style={{ marginBottom: '1rem' }}>
-                <Upload size={48} color="var(--accent-primary)" style={{ opacity: 0.7 }} />
+              {/* Drop Zone */}
+              <div
+                className={`upload-zone ${dragOver ? 'drag-over' : ''}`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handleDrop}
+                onClick={() => !selectedFile && fileRef.current?.click()}
+                style={{
+                  cursor: selectedFile ? 'default' : 'pointer',
+                  minHeight: '280px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".iq,.wav,.mp3,.m4a,.aac,.flac,.ogg,.opus,.complex,.bin,.dat"
+                  style={{ display: 'none' }}
+                  onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
+                />
+
+                {!selectedFile ? (
+                  <>
+                    <div
+                      style={{
+                        width: 72,
+                        height: 72,
+                        borderRadius: '50%',
+                        background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.15) 0%, rgba(0, 229, 255, 0.1) 100%)',
+                        border: '2px solid rgba(0, 229, 255, 0.3)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginBottom: '1.25rem'
+                      }}
+                    >
+                      <Upload size={32} color="#00e5ff" />
+                    </div>
+                    <h3 style={{ marginBottom: '0.5rem', fontWeight: 700, fontSize: '1.1rem', color: '#f8fafc' }}>
+                      Drop Signal Recording Here
+                    </h3>
+                    <p style={{ color: '#64748b', fontSize: '0.8rem', marginBottom: '1.25rem', textAlign: 'center', maxWidth: '380px' }}>
+                      Drag and drop your .IQ, .WAV, or raw I/Q recording file, or click to browse your file system
+                    </p>
+                    <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                      {ACCEPTED_EXTS.map((ext) => (
+                        <span key={ext} className="badge badge-cyan" style={{ fontSize: '0.68rem' }}>
+                          {ext}
+                        </span>
+                      ))}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: '1rem',
+                        fontSize: '0.7rem',
+                        color: '#475569',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem'
+                      }}
+                    >
+                      <Info size={12} />
+                      Maximum file size: 500 MB
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ width: '100%', padding: '1rem' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '1rem',
+                        marginBottom: '1.25rem',
+                        padding: '1rem',
+                        background: 'rgba(13, 22, 44, 0.6)',
+                        border: '1px solid #1a2645',
+                        borderRadius: '8px'
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: '8px',
+                          background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(0, 229, 255, 0.15) 100%)',
+                          border: '1px solid rgba(56, 189, 248, 0.3)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <FileAudio size={24} color="#38bdf8" />
+                      </div>
+                      <div style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            marginBottom: '0.2rem',
+                            fontSize: '0.9rem',
+                            color: '#f8fafc',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {selectedFile.name}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontFamily: 'JetBrains Mono, monospace' }}>
+                          {fmtSize(selectedFile.size)} · {selectedFile.type || 'Binary Signal Data'}
+                        </div>
+                      </div>
+                      <button className="btn-icon-xs" onClick={(e) => { e.stopPropagation(); reset(); }} title="Remove file">
+                        <X size={14} />
+                      </button>
+                    </div>
+
+                    {uploading && (
+                      <div style={{ marginBottom: '1.25rem' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            marginBottom: '0.5rem',
+                            fontSize: '0.75rem',
+                            color: '#94a3b8',
+                            fontWeight: 600
+                          }}
+                        >
+                          <span>Uploading & Validating...</span>
+                          <span style={{ fontFamily: 'JetBrains Mono, monospace', color: '#38bdf8' }}>{uploadProgress}%</span>
+                        </div>
+                        <ProgressBar value={uploadProgress} />
+                      </div>
+                    )}
+
+                    {!uploading && (
+                      <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
+                        <button className="btn-workstation-primary" onClick={handleUpload} style={{ flex: 1 }}>
+                          <Upload size={14} /> Upload & Validate
+                        </button>
+                        <button className="btn-workstation-secondary" onClick={() => setShowConfig(!showConfig)}>
+                          <Settings2 size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <h3 style={{ marginBottom: '0.5rem', fontWeight: 700 }}>Drop your signal file here</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem' }}>
-                or click to browse
-              </p>
-              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                {ACCEPTED_EXTS.map(ext => (
-                  <span key={ext} className="badge badge-muted">{ext}</span>
-                ))}
+
+              {/* File Format Reference */}
+              <div className="panel-card">
+                <div className="panel-header">
+                  <div className="panel-title">
+                    <FileCode size={15} />
+                    <span>Supported Signal Recording Formats</span>
+                  </div>
+                </div>
+                <div style={{ padding: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {[
+                    {
+                      fmt: '.iq / .complex',
+                      desc: 'Raw interleaved float32 I/Q samples. Filename encodes sample rate (e.g., signal_2.048e6.iq = 2.048 MHz)',
+                      icon: <Radio size={14} color="#38bdf8" />
+                    },
+                    {
+                      fmt: '.wav',
+                      desc: 'Standard WAV with I/Q in stereo (L=I, R=Q) or mono. Header contains sample rate and bit depth.',
+                      icon: <Activity size={14} color="#10b981" />
+                    },
+                    {
+                      fmt: '.bin / .dat',
+                      desc: 'Binary float32 or int16 I/Q pairs. Endian-aware reader auto-detects format heuristically.',
+                      icon: <Database size={14} color="#a855f7" />
+                    }
+                  ].map((row) => (
+                    <div
+                      key={row.fmt}
+                      style={{
+                        display: 'flex',
+                        gap: '0.75rem',
+                        padding: '0.65rem 0.75rem',
+                        background: 'rgba(10, 17, 34, 0.6)',
+                        border: '1px solid #162445',
+                        borderRadius: '6px'
+                      }}
+                    >
+                      <div style={{ flexShrink: 0, marginTop: '2px' }}>{row.icon}</div>
+                      <div>
+                        <code
+                          className="mono"
+                          style={{
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            color: '#38bdf8',
+                            background: 'rgba(56, 189, 248, 0.1)',
+                            padding: '0.15rem 0.4rem',
+                            borderRadius: '3px',
+                            marginBottom: '0.25rem',
+                            display: 'inline-block'
+                          }}
+                        >
+                          {row.fmt}
+                        </code>
+                        <div style={{ fontSize: '0.72rem', color: '#94a3b8', lineHeight: 1.4 }}>{row.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </>
-          ) : (
-            <div style={{ width: '100%' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                <FileAudio size={36} color="var(--accent-primary)" />
-                <div style={{ flex: 1, textAlign: 'left' }}>
-                  <div style={{ fontWeight: 700, marginBottom: '0.2rem' }}>{selectedFile.name}</div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{fmtSize(selectedFile.size)}</div>
+          )}
+
+          {/* Uploaded - Ready to Analyze */}
+          {uploadedFile && (
+            <div
+              className="panel-card animate-fade-in"
+              style={{ border: '1px solid rgba(16, 185, 129, 0.4)', boxShadow: '0 0 20px rgba(16, 185, 129, 0.15)' }}
+            >
+              <div className="panel-header" style={{ background: 'rgba(16, 185, 129, 0.1)' }}>
+                <div className="panel-title">
+                  <CheckCircle size={15} color="#10b981" />
+                  <span>File Validated & Ready for Analysis</span>
                 </div>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={e => { e.stopPropagation(); reset(); }}
-                >
-                  <X size={14} />
-                </button>
+                <span className="badge badge-green">VERIFIED</span>
               </div>
 
-              {uploading && (
-                <div style={{ marginBottom: '1rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    <span>Uploading…</span><span>{uploadProgress}%</span>
+              <div style={{ padding: '1.25rem' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1rem',
+                    marginBottom: '1.25rem',
+                    padding: '1rem',
+                    background: 'rgba(10, 17, 34, 0.6)',
+                    border: '1px solid rgba(16, 185, 129, 0.2)',
+                    borderRadius: '8px'
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: '8px',
+                      background: 'rgba(16, 185, 129, 0.15)',
+                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <CheckCircle size={24} color="#10b981" />
                   </div>
-                  <ProgressBar value={uploadProgress} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, color: '#10b981', fontSize: '0.85rem', marginBottom: '0.2rem' }}>
+                      Upload Complete
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{uploadedFile.filename}</div>
+                  </div>
                 </div>
-              )}
 
-              {!uploading && (
-                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
-                  <button className="btn btn-primary" onClick={handleUpload}>
-                    <Upload size={14} /> Upload File
+                {/* File Metadata Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.65rem', marginBottom: '1.25rem' }}>
+                  {[
+                    { label: 'Format', val: uploadedFile.format.toUpperCase() },
+                    { label: 'Size', val: fmtSize(uploadedFile.size) },
+                    {
+                      label: 'Sample Rate',
+                      val: uploadedFile.sample_rate ? `${(uploadedFile.sample_rate / 1e6).toFixed(3)} MHz` : 'Auto-detect'
+                    },
+                    { label: 'Channels', val: uploadedFile.channels ?? 'TBD' },
+                    { label: 'Sample Format', val: uploadedFile.sample_format ?? 'float32' },
+                    { label: 'SHA-256', val: uploadedFile.checksum.slice(0, 12) + '...' }
+                  ].map((row) => (
+                    <div
+                      key={row.label}
+                      style={{
+                        background: 'rgba(10, 17, 34, 0.5)',
+                        border: '1px solid #162445',
+                        borderRadius: '6px',
+                        padding: '0.6rem 0.75rem'
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: '0.65rem',
+                          color: '#64748b',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em',
+                          fontWeight: 700,
+                          marginBottom: '0.2rem'
+                        }}
+                      >
+                        {row.label}
+                      </div>
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontFamily: 'JetBrains Mono, monospace',
+                          fontSize: '0.78rem',
+                          color: '#f8fafc'
+                        }}
+                      >
+                        {row.val}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button
+                    className="btn-workstation-primary"
+                    onClick={handleLaunch}
+                    disabled={launching}
+                    style={{ flex: 1, justifyContent: 'center' }}
+                  >
+                    {launching ? (
+                      <>
+                        <Spinner size={14} /> Dispatching...
+                      </>
+                    ) : (
+                      <>
+                        <Play size={14} /> Launch DSP Analysis Pipeline
+                      </>
+                    )}
                   </button>
-                  <button className="btn btn-secondary" onClick={() => setShowConfig(!showConfig)}>
-                    <Settings2 size={14} /> Config
+                  <button className="btn-workstation-secondary" onClick={reset}>
+                    <Upload size={14} /> New File
                   </button>
                 </div>
-              )}
+              </div>
             </div>
           )}
         </div>
-      )}
 
-      {/* Uploaded — ready to analyze */}
-      {uploadedFile && (
-        <div className="card animate-fade-in" style={{ border: '1px solid rgba(0,255,157,0.25)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-            <CheckCircle size={28} color="#00ff9d" />
-            <div>
-              <div style={{ fontWeight: 700, color: '#00ff9d' }}>Upload complete!</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{uploadedFile.filename}</div>
-            </div>
-          </div>
-
-          {/* File metadata */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '0.75rem', marginBottom: '1rem' }}>
-            {[
-              { label: 'Format', val: uploadedFile.format },
-              { label: 'Size', val: fmtSize(uploadedFile.size) },
-              { label: 'Sample Rate', val: uploadedFile.sample_rate ? `${(uploadedFile.sample_rate/1e6).toFixed(2)} MHz` : 'auto-detect' },
-              { label: 'Channels', val: uploadedFile.channels ?? 'TBD' },
-              { label: 'Sample Format', val: uploadedFile.sample_format ?? 'TBD' },
-              { label: 'Checksum', val: uploadedFile.checksum.slice(0, 10) + '…' },
-            ].map(row => (
-              <div key={row.label} style={{
-                background: 'rgba(255,255,255,0.02)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '0.5rem 0.75rem'
-              }}>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{row.label}</div>
-                <div style={{ fontWeight: 600, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem' }}>{row.val}</div>
+        {/* Right Column: Pipeline Config (when file uploaded) */}
+        {uploadedFile && (
+          <div className="panel-card">
+            <div className="panel-header">
+              <div className="panel-title">
+                <Settings2 size={15} />
+                <span>DSP Pipeline Configuration</span>
               </div>
-            ))}
-          </div>
+            </div>
+            <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label
+                  style={{
+                    fontSize: '0.75rem',
+                    color: '#94a3b8',
+                    marginBottom: '0.45rem',
+                    display: 'block',
+                    fontWeight: 600
+                  }}
+                >
+                  Analysis Window Size (samples)
+                </label>
+                <select
+                  className="input-control"
+                  value={config.max_samples}
+                  onChange={(e) => setConfig((c) => ({ ...c, max_samples: +e.target.value }))}
+                  style={{ fontSize: '0.8rem', fontFamily: 'JetBrains Mono, monospace' }}
+                >
+                  <option value={65536}>65,536 (64k)</option>
+                  <option value={131072}>131,072 (128k)</option>
+                  <option value={262144}>262,144 (256k)</option>
+                  <option value={524288}>524,288 (512k) — default</option>
+                  <option value={1048576}>1,048,576 (1M)</option>
+                </select>
+                <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.35rem', lineHeight: 1.3 }}>
+                  Number of I/Q samples to process. Larger windows improve frequency resolution but increase processing time.
+                </div>
+              </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <button className="btn btn-primary" onClick={handleLaunch} disabled={launching} style={{ flex: 1 }}>
-              {launching ? <Spinner size={14} /> : <Play size={14} />}
-              {launching ? 'Launching…' : 'Run DSP Analysis Pipeline'}
-            </button>
-            <button className="btn btn-secondary btn-sm" onClick={reset}>
-              <Upload size={14} /> New File
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Pipeline Config */}
-      {showConfig && !uploadedFile && (
-        <div className="card animate-fade-in" style={{ marginTop: '1rem' }}>
-          <div className="card-header">
-            <span className="card-title">Pipeline Configuration</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <div>
-              <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.35rem', display: 'block' }}>
-                Max Samples (analysis window)
-              </label>
-              <select
-                className="input"
-                value={config.max_samples}
-                onChange={e => setConfig(c => ({ ...c, max_samples: +e.target.value }))}
+              <div
+                style={{
+                  padding: '0.75rem',
+                  background: 'rgba(56, 189, 248, 0.05)',
+                  border: '1px solid rgba(56, 189, 248, 0.2)',
+                  borderRadius: '6px'
+                }}
               >
-                <option value={65536}>65,536 (64k)</option>
-                <option value={131072}>131,072 (128k)</option>
-                <option value={262144}>262,144 (256k)</option>
-                <option value={524288}>524,288 (512k) — default</option>
-                <option value={1048576}>1,048,576 (1M)</option>
-              </select>
+                <div style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: 700, marginBottom: '0.3rem' }}>
+                  ℹ Pipeline Stages
+                </div>
+                <div style={{ fontSize: '0.7rem', color: '#94a3b8', lineHeight: 1.4 }}>
+                  The DSP pipeline will execute: FFT → PSD → Spectrogram → Parameter Estimation → Modulation Classification →
+                  Synchronization → Demodulation → Bit Stream Extraction.
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Tips */}
-      <div style={{ marginTop: '1.5rem' }} className="card">
-        <div className="card-header">
-          <span className="card-title">File Format Guide</span>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {[
-            { fmt: '.iq / .complex', desc: 'Raw interleaved float32 I/Q samples. Filename may encode sample_rate as e.g. signal_100e6.iq' },
-            { fmt: '.wav', desc: 'WAV file with I/Q data in stereo (L=I, R=Q) or mono float32. Standard audio WAV also accepted.' },
-            { fmt: '.bin / .dat', desc: 'Binary float32 or int16 I/Q pairs. Endian-aware reader auto-detects format.' },
-          ].map(row => (
-            <div key={row.fmt} style={{ display: 'flex', gap: '1rem', padding: '0.5rem 0', borderBottom: '1px solid var(--border-subtle)' }}>
-              <code className="mono badge badge-cyan" style={{ flexShrink: 0 }}>{row.fmt}</code>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{row.desc}</span>
-            </div>
-          ))}
-        </div>
+        )}
       </div>
     </div>
   );
