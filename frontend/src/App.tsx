@@ -10,7 +10,7 @@ import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import UploadPage from './pages/UploadPage';
 import JobQueue from './pages/JobQueue';
-import VisualizationsPage from './pages/VisualizationsPage';
+import SignalLabPage from './pages/SignalLabPage';
 import ParametersPage from './pages/ParametersPage';
 import BitstreamPage from './pages/BitstreamPage';
 import ReportsPage from './pages/ReportsPage';
@@ -240,7 +240,7 @@ const AppShell: React.FC = () => {
             <Route path="/" element={<Dashboard />} />
             <Route path="/upload" element={<UploadPage />} />
             <Route path="/jobs" element={<JobQueue />} />
-            <Route path="/visualizations" element={<VisualizationsPage />} />
+            <Route path="/visualizations" element={<SignalLabPage />} />
             <Route path="/parameters" element={<ParametersPage />} />
             <Route path="/bitstream" element={<BitstreamPage />} />
             <Route path="/reports" element={<ReportsPage />} />

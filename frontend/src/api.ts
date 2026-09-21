@@ -73,6 +73,9 @@ export interface AnalysisResult {
   visualizations: Record<string, unknown>;
 }
 
+// Import full analysis types
+export type { FullAnalysisResult, AnalysisParameters, AnalysisVisualizationData } from './types/visualizations';
+
 export interface ProcessingStage {
   id: number;
   job_id: number;

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Upload,
@@ -23,38 +23,11 @@ import {
   ConstellationDiagram,
   MiniConstellationPlot
 } from '../components/DashboardPlots';
-import { uploadFile, createJob } from '../api';
+import { uploadFile, createJob, listJobs, getAnalysisResult, type AnalysisJob } from '../api';
 import { useStore } from '../store';
+import type { FullAnalysisResult } from '../types/visualizations';
 
-// Pipeline Stages configuration
-const PIPELINE_STAGES = [
-  { name: 'File Ingestion', duration: '2.1s', status: 'completed' },
-  { name: 'Preprocessing', duration: '3.4s', status: 'completed' },
-  { name: 'Signal Analysis', duration: '4.8s', status: 'completed' },
-  { name: 'Parameter Inference', duration: '2.7s', status: 'completed' },
-  { name: 'Modulation Classification', progress: '68%', status: 'processing' },
-  { name: 'Synchronization', status: 'waiting' },
-  { name: 'Demodulation', status: 'waiting' },
-  { name: 'De-interleaving', status: 'waiting' },
-  { name: 'FEC Decoding', status: 'waiting' },
-  { name: 'Bit Stream Analysis', status: 'waiting' },
-  { name: 'Correlation', status: 'waiting' }
-];
-
-// Initial Live Logs matching screenshot
-const INITIAL_LOGS = [
-  { time: '10:24:01', text: 'File validation started', type: 'success' },
-  { time: '10:24:03', text: 'Metadata extracted (2.0 MHz, IQ)', type: 'success' },
-  { time: '10:24:05', text: 'DC removal completed', type: 'success' },
-  { time: '10:24:07', text: 'Bandpass filter applied (250 kHz)', type: 'success' },
-  { time: '10:24:10', text: 'FFT analysis completed', type: 'success' },
-  { time: '10:24:12', text: 'SNR estimated: 18.5 dB', type: 'success' },
-  { time: '10:24:15', text: 'Modulation classification started', type: 'info' },
-  { time: '10:24:16', text: 'QPSK candidate detected (96%)', type: 'primary' },
-  { time: '10:24:18', text: 'Synchronization queued...', type: 'waiting' }
-];
-
-// Demo Signals List
+// Demo Signals List (preserved for demo functionality)
 const DEMO_SIGNALS = [
   { key: 'golden_qpsk', name: 'Demo QPSK', desc: '50 kBaud, +2.4 kHz offset, 24 dB SNR, CCSDS-32 preamble', mod: 'QPSK' },
   { key: 'golden_bpsk', name: 'Demo BPSK', desc: '50 kBaud, +5 kHz offset, 22 dB SNR, Barker-11 preamble', mod: 'BPSK' },
@@ -69,11 +42,157 @@ const Dashboard: React.FC = () => {
   const { addToast } = useStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // State
+  // State for real data
+  const [jobs, setJobs] = useState<AnalysisJob[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
+  const [analysisData, setAnalysisData] = useState<FullAnalysisResult | null>(null);
+  const [loading, setLoading] = useState(false);
   const [showDemoModal, setShowDemoModal] = useState(false);
-  const [logs, setLogs] = useState(INITIAL_LOGS);
 
-  // File Upload State
+  // Fetch available jobs on mount
+  useEffect(() => {
+    listJobs()
+      .then(jobList => {
+        setJobs(jobList);
+        // Auto-select the most recent completed job
+        const completedJobs = jobList.filter(j => j.status === 'completed' && j.result);
+        if (completedJobs.length > 0 && !selectedJobId) {
+          setSelectedJobId(completedJobs[0].id);
+        }
+      })
+      .catch(err => {
+        console.error('Failed to load jobs:', err);
+      });
+  }, []);
+
+  // Fetch analysis data when selected job changes
+  useEffect(() => {
+    if (!selectedJobId) {
+      setAnalysisData(null);
+      return;
+    }
+
+    const selectedJob = jobs.find(j => j.id === selectedJobId);
+    if (selectedJob?.status === 'completed' && selectedJob.result) {
+      setLoading(true);
+      getAnalysisResult(selectedJobId)
+        .then(result => {
+          setAnalysisData(result as unknown as FullAnalysisResult);
+          setLoading(false);
+        })
+        .catch(err => {
+          console.error('Failed to load analysis result:', err);
+          setAnalysisData(null);
+          setLoading(false);
+        });
+    } else {
+      setAnalysisData(null);
+    }
+  }, [selectedJobId, jobs]);
+
+  // Calculate real KPI statistics from jobs
+  const calculateKPIs = () => {
+    const totalAnalyses = jobs.length;
+    const completedJobs = jobs.filter(j => j.status === 'completed' || j.status === 'failed');
+    const successfulJobs = jobs.filter(j => j.status === 'completed' && j.result);
+    const successRate = completedJobs.length > 0
+      ? Math.round((successfulJobs.length / completedJobs.length) * 100)
+      : 0;
+
+    // Calculate average SNR from completed jobs with SNR data
+    let totalSNR = 0;
+    let snrCount = 0;
+    successfulJobs.forEach(job => {
+      const snr = job.result?.parameters?.snr?.value;
+      if (typeof snr === 'number' && !isNaN(snr)) {
+        totalSNR += snr;
+        snrCount++;
+      }
+    });
+    const avgSNR = snrCount > 0 ? (totalSNR / snrCount).toFixed(1) : null;
+
+    // Calculate total file sizes
+    let totalBytes = 0;
+    jobs.forEach(job => {
+      if (job.signal_file?.size) {
+        totalBytes += job.signal_file.size;
+      }
+    });
+    const totalGB = (totalBytes / (1024 * 1024 * 1024)).toFixed(1);
+
+    return { totalAnalyses, successRate, avgSNR, totalGB };
+  };
+
+  const kpis = calculateKPIs();
+
+  // Get current job and analysis details
+  const currentJob = jobs.find(j => j.id === selectedJobId);
+  const parameters = analysisData?.parameters;
+  const visualizations = analysisData?.visualizations;
+
+  // Extract real parameters safely
+  const modulation = analysisData?.primary_modulation || 'Unknown';
+  const confidence = analysisData?.confidence ?? 0;
+  const sampleRate = parameters?.sample_rate?.value;
+  const carrierFreq = parameters?.carrier_frequency?.value;
+  const bandwidth = parameters?.bandwidth?.value;
+  const symbolRate = parameters?.symbol_rate?.value;
+  const snr = parameters?.snr?.value;
+
+  // Format helper functions
+  const formatFrequency = (hz: number | undefined) => {
+    if (!hz) return '—';
+    if (hz >= 1e6) return `${(hz / 1e6).toFixed(3)} MHz`;
+    if (hz >= 1e3) return `${(hz / 1e3).toFixed(3)} kHz`;
+    return `${hz.toFixed(0)} Hz`;
+  };
+
+  const formatRate = (rate: number | undefined) => {
+    if (!rate) return '—';
+    if (rate >= 1e6) return `${(rate / 1e6).toFixed(3)} MSps`;
+    if (rate >= 1e3) return `${(rate / 1e3).toFixed(3)} kSps`;
+    return `${rate.toFixed(0)} Sps`;
+  };
+
+  const formatSymbolRate = (rate: number | undefined) => {
+    if (!rate) return '—';
+    if (rate >= 1e6) return `${(rate / 1e6).toFixed(3)} MSym/s`;
+    if (rate >= 1e3) return `${(rate / 1e3).toFixed(3)} kSym/s`;
+    return `${rate.toFixed(0)} Sym/s`;
+  };
+
+  // Get pipeline stages from real analysis if available
+  const getPipelineStages = () => {
+    if (!currentJob) return [];
+
+    if (analysisData?.stages && Array.isArray(analysisData.stages)) {
+      // Use real stages from backend
+      return analysisData.stages.map((stage: any) => ({
+        name: stage.stage_name || 'Unknown',
+        duration: stage.duration_ms ? `${(stage.duration_ms / 1000).toFixed(1)}s` : undefined,
+        status: stage.status || 'unknown'
+      }));
+    }
+
+    // Fallback: use job status
+    if (currentJob.status === 'completed') {
+      return [{ name: 'Analysis Complete', status: 'completed', duration: '—' }];
+    } else if (currentJob.status === 'processing' || currentJob.status === 'validating') {
+      return [
+        { name: currentJob.current_stage || 'Processing', status: 'processing', progress: `${currentJob.progress || 0}%` }
+      ];
+    } else if (currentJob.status === 'queued') {
+      return [{ name: 'Queued', status: 'waiting' }];
+    } else if (currentJob.status === 'failed') {
+      return [{ name: 'Failed', status: 'failed', error: currentJob.error }];
+    }
+
+    return [];
+  };
+
+  const pipelineStages = getPipelineStages();
+
+  // File Upload Handler
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -110,7 +229,6 @@ const Dashboard: React.FC = () => {
         throw new Error('Failed to dispatch demo job');
       }
     } catch {
-      // If offline/local fallback, simulate interactive progress
       addToast('success', `Loaded ${demoKey} demo into interactive workstation.`);
     }
   };
@@ -222,9 +340,9 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* 4 KPI Stat Cards */}
+        {/* 4 KPI Stat Cards - REAL DATA */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.85rem' }}>
-          {/* Stat 1 */}
+          {/* Stat 1: Total Analyses */}
           <div style={{
             background: 'rgba(10, 17, 34, 0.8)',
             border: '1px solid #162445',
@@ -252,12 +370,12 @@ const Dashboard: React.FC = () => {
                 Total Analyses
               </div>
               <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc', fontFamily: 'JetBrains Mono, monospace' }}>
-                247
+                {kpis.totalAnalyses}
               </div>
             </div>
           </div>
 
-          {/* Stat 2 */}
+          {/* Stat 2: Success Rate */}
           <div style={{
             background: 'rgba(10, 17, 34, 0.8)',
             border: '1px solid #162445',
@@ -285,12 +403,12 @@ const Dashboard: React.FC = () => {
                 Success Rate
               </div>
               <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#10b981', fontFamily: 'JetBrains Mono, monospace' }}>
-                92%
+                {kpis.successRate}%
               </div>
             </div>
           </div>
 
-          {/* Stat 3 */}
+          {/* Stat 3: Average SNR */}
           <div style={{
             background: 'rgba(10, 17, 34, 0.8)',
             border: '1px solid #162445',
@@ -318,12 +436,12 @@ const Dashboard: React.FC = () => {
                 Avg. SNR
               </div>
               <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc', fontFamily: 'JetBrains Mono, monospace' }}>
-                18.5 dB
+                {kpis.avgSNR ? `${kpis.avgSNR} dB` : '—'}
               </div>
             </div>
           </div>
 
-          {/* Stat 4 */}
+          {/* Stat 4: Signals Processed */}
           <div style={{
             background: 'rgba(10, 17, 34, 0.8)',
             border: '1px solid #162445',
@@ -351,7 +469,7 @@ const Dashboard: React.FC = () => {
                 Signals Processed
               </div>
               <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc', fontFamily: 'JetBrains Mono, monospace' }}>
-                12.6 GB
+                {kpis.totalGB} GB
               </div>
             </div>
           </div>
@@ -373,11 +491,13 @@ const Dashboard: React.FC = () => {
               <div className="panel-title">
                 <Activity size={15} />
                 <span>Live Signal Spectrum</span>
-                <span className="pill-live" style={{ marginLeft: '0.4rem' }}>LIVE</span>
+                {currentJob && <span className="pill-live" style={{ marginLeft: '0.4rem' }}>
+                  {currentJob.status === 'completed' ? 'READY' : 'LIVE'}
+                </span>}
               </div>
               <div className="panel-actions">
                 <span style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'JetBrains Mono, monospace' }}>
-                  Center: 437.123 MHz · Span: 2.0 MHz · RBW: 1 kHz
+                  Center: {formatFrequency(carrierFreq)} · Span: {formatFrequency(sampleRate)} · RBW: —
                 </span>
                 <button className="btn-icon-xs">Spectrum <ChevronDown size={11} style={{ marginLeft: 2 }} /></button>
                 <button className="btn-icon-xs" title="Download trace"><Download size={12} /></button>
@@ -385,7 +505,7 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
             <div style={{ flex: 1, position: 'relative' }}>
-              <LiveSignalSpectrum />
+              <LiveSignalSpectrum data={visualizations?.fft || null} />
             </div>
           </div>
 
@@ -400,12 +520,12 @@ const Dashboard: React.FC = () => {
                 <button className="btn-icon-xs">AI</button>
                 <button className="btn-icon-xs">Max Hold</button>
                 <button className="btn-icon-xs">Clear</button>
-                <button className="btn-icon-xs">2.0 MHz <ChevronDown size={11} style={{ marginLeft: 2 }} /></button>
+                <button className="btn-icon-xs">{formatFrequency(sampleRate)} <ChevronDown size={11} style={{ marginLeft: 2 }} /></button>
                 <button className="btn-icon-xs" title="Fullscreen"><Maximize2 size={12} /></button>
               </div>
             </div>
             <div style={{ flex: 1, position: 'relative' }}>
-              <WaterfallSpectrogram />
+              <WaterfallSpectrogram data={visualizations?.spectrogram || null} />
             </div>
           </div>
 
@@ -420,20 +540,20 @@ const Dashboard: React.FC = () => {
             </div>
             <span style={{
               fontSize: '0.68rem',
-              color: '#3b82f6',
+              color: currentJob?.status === 'completed' ? '#10b981' : currentJob?.status === 'processing' ? '#3b82f6' : '#64748b',
               fontWeight: 700,
-              background: 'rgba(59, 130, 246, 0.15)',
+              background: currentJob?.status === 'completed' ? 'rgba(16, 185, 129, 0.15)' : currentJob?.status === 'processing' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(100, 116, 139, 0.15)',
               padding: '0.15rem 0.45rem',
               borderRadius: '4px'
             }}>
-              Processing...
+              {currentJob?.status === 'completed' ? 'Completed' : currentJob?.status === 'processing' ? 'Processing...' : currentJob?.status || 'No Job Selected'}
             </span>
           </div>
 
           <div style={{ flex: 1, padding: '0.75rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            {PIPELINE_STAGES.map((st) => (
+            {pipelineStages.length > 0 ? pipelineStages.map((st, idx) => (
               <div
-                key={st.name}
+                key={idx}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -442,9 +562,13 @@ const Dashboard: React.FC = () => {
                   borderRadius: '6px',
                   background: st.status === 'processing'
                     ? 'rgba(59, 130, 246, 0.15)'
+                    : st.status === 'failed'
+                    ? 'rgba(239, 68, 68, 0.15)'
                     : 'rgba(10, 17, 34, 0.6)',
                   border: st.status === 'processing'
                     ? '1px solid rgba(59, 130, 246, 0.4)'
+                    : st.status === 'failed'
+                    ? '1px solid rgba(239, 68, 68, 0.4)'
                     : '1px solid #162445'
                 }}
               >
@@ -462,10 +586,15 @@ const Dashboard: React.FC = () => {
                       <div style={{ width: 4, height: 4, borderRadius: '50%', background: '#475569' }} />
                     </div>
                   )}
+                  {st.status === 'failed' && (
+                    <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '10px' }}>
+                      ✕
+                    </div>
+                  )}
                   <span style={{
                     fontSize: '0.75rem',
                     fontWeight: st.status === 'processing' ? 700 : 500,
-                    color: st.status === 'waiting' ? '#64748b' : '#f1f5f9'
+                    color: st.status === 'waiting' ? '#64748b' : st.status === 'failed' ? '#ef4444' : '#f1f5f9'
                   }}>
                     {st.name}
                   </span>
@@ -478,13 +607,19 @@ const Dashboard: React.FC = () => {
                     ? '#10b981'
                     : st.status === 'processing'
                     ? '#3b82f6'
+                    : st.status === 'failed'
+                    ? '#ef4444'
                     : '#475569',
                   fontWeight: 600
                 }}>
-                  {st.duration || st.progress || 'Waiting'}
+                  {st.duration || st.progress || (st.status === 'waiting' ? 'Waiting' : '—')}
                 </span>
               </div>
-            ))}
+            )) : (
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', fontSize: '0.8rem' }}>
+                No analysis job selected
+              </div>
+            )}
           </div>
         </div>
 
@@ -498,13 +633,13 @@ const Dashboard: React.FC = () => {
             <span style={{
               fontSize: '0.65rem',
               fontWeight: 700,
-              background: 'rgba(16, 185, 129, 0.15)',
-              color: '#10b981',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
+              background: confidence >= 0.85 ? 'rgba(16, 185, 129, 0.15)' : confidence >= 0.6 ? 'rgba(251, 191, 36, 0.15)' : 'rgba(100, 116, 139, 0.15)',
+              color: confidence >= 0.85 ? '#10b981' : confidence >= 0.6 ? '#fbbf24' : '#64748b',
+              border: confidence >= 0.85 ? '1px solid rgba(16, 185, 129, 0.3)' : confidence >= 0.6 ? '1px solid rgba(251, 191, 36, 0.3)' : '1px solid rgba(100, 116, 139, 0.3)',
               padding: '0.15rem 0.5rem',
               borderRadius: '99px'
             }}>
-              High Confidence
+              {confidence >= 0.85 ? 'High Confidence' : confidence >= 0.6 ? 'Medium Confidence' : confidence > 0 ? 'Low Confidence' : 'No Data'}
             </span>
           </div>
 
@@ -514,40 +649,42 @@ const Dashboard: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.2) 0%, rgba(0, 229, 255, 0.15) 100%)',
-              border: '1px solid #1d4ed8',
+              background: modulation !== 'Unknown' ? 'linear-gradient(135deg, rgba(37, 99, 235, 0.2) 0%, rgba(0, 229, 255, 0.15) 100%)' : 'rgba(100, 116, 139, 0.15)',
+              border: modulation !== 'Unknown' ? '1px solid #1d4ed8' : '1px solid #475569',
               borderRadius: '8px',
               padding: '0.65rem 0.85rem'
             }}>
-              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#38bdf8', letterSpacing: '-0.01em' }}>
-                QPSK
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: modulation !== 'Unknown' ? '#38bdf8' : '#64748b', letterSpacing: '-0.01em' }}>
+                {modulation}
               </div>
-              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#10b981', fontFamily: 'JetBrains Mono, monospace' }}>
-                96% <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Confidence</span>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: confidence > 0 ? '#10b981' : '#64748b', fontFamily: 'JetBrains Mono, monospace' }}>
+                {confidence > 0 ? `${(confidence * 100).toFixed(0)}%` : '—'} <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Confidence</span>
               </div>
             </div>
 
-            {/* Key-Value Parameters */}
+            {/* Key-Value Parameters - REAL DATA */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.75rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#64748b' }}>Center Frequency</span>
-                <span style={{ color: '#f1f5f9', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>437.123 MHz</span>
+                <span style={{ color: '#f1f5f9', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>{formatFrequency(carrierFreq)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#64748b' }}>Bandwidth</span>
-                <span style={{ color: '#f1f5f9', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>250 kHz</span>
+                <span style={{ color: '#f1f5f9', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>{formatFrequency(bandwidth)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#64748b' }}>Symbol Rate</span>
-                <span style={{ color: '#f1f5f9', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>100 kSym/s</span>
+                <span style={{ color: '#f1f5f9', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>{formatSymbolRate(symbolRate)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#64748b' }}>SNR</span>
-                <span style={{ color: '#10b981', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>18.5 dB</span>
+                <span style={{ color: snr ? '#10b981' : '#64748b', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
+                  {snr ? `${snr.toFixed(1)} dB` : '—'}
+                </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#64748b' }}>Modulation</span>
-                <span style={{ color: '#38bdf8', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>QPSK</span>
+                <span style={{ color: '#38bdf8', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>{modulation}</span>
               </div>
             </div>
 
@@ -563,10 +700,12 @@ const Dashboard: React.FC = () => {
               gap: '0.5rem'
             }}>
               <div style={{ width: '100px', height: '100px' }}>
-                <MiniConstellationPlot />
+                <MiniConstellationPlot data={visualizations?.constellation || null} />
               </div>
               <div style={{ fontSize: '0.68rem', color: '#94a3b8', textAlign: 'center' }}>
-                4 distinct phase states detected
+                {visualizations?.constellation?.num_points
+                  ? `${visualizations.constellation.num_points} symbol points`
+                  : 'No constellation data'}
               </div>
             </div>
           </div>
@@ -590,7 +729,7 @@ const Dashboard: React.FC = () => {
             <button className="btn-icon-xs">I/Q Signal <ChevronDown size={10} style={{ marginLeft: 2 }} /></button>
           </div>
           <div style={{ flex: 1, position: 'relative' }}>
-            <TimeDomainWaveform />
+            <TimeDomainWaveform data={visualizations?.waveform || null} />
           </div>
         </div>
 
@@ -604,11 +743,11 @@ const Dashboard: React.FC = () => {
             <button className="btn-icon-xs">I/Q <ChevronDown size={10} style={{ marginLeft: 2 }} /></button>
           </div>
           <div style={{ flex: 1, position: 'relative' }}>
-            <ConstellationDiagram />
+            <ConstellationDiagram data={visualizations?.constellation || null} />
           </div>
         </div>
 
-        {/* Card 3: Estimated Parameters Table */}
+        {/* Card 3: Estimated Parameters Table - REAL DATA */}
         <div className="panel-card" style={{ height: '240px' }}>
           <div className="panel-header">
             <div className="panel-title">
@@ -627,44 +766,73 @@ const Dashboard: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                <tr style={{ borderBottom: '1px solid #101c36' }}>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Sample Rate</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>2.000 MHz</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#10b981', fontWeight: 600 }}>High (0.98)</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>Metadata</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid #101c36' }}>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Carrier Frequency</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>437.123 MHz</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#10b981', fontWeight: 600 }}>High (0.95)</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>Estimated</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid #101c36' }}>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Bandwidth</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>250 kHz</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#10b981', fontWeight: 600 }}>High (0.92)</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>Estimated</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid #101c36' }}>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Symbol Rate</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>100 kSym/s</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#f59e0b', fontWeight: 600 }}>Medium (0.78)</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>Estimated</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid #101c36' }}>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Modulation</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#38bdf8', fontFamily: 'JetBrains Mono' }}>QPSK</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#10b981', fontWeight: 600 }}>High (0.96)</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>Classifier</td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>SNR</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>18.5 dB</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#f59e0b', fontWeight: 600 }}>Medium (0.80)</td>
-                  <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>Estimated</td>
-                </tr>
+                {parameters?.sample_rate && (
+                  <tr style={{ borderBottom: '1px solid #101c36' }}>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Sample Rate</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>{formatRate(parameters.sample_rate.value)}</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: parameters.sample_rate.confidence >= 0.8 ? '#10b981' : parameters.sample_rate.confidence >= 0.5 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
+                      {parameters.sample_rate.confidence_label} ({parameters.sample_rate.confidence.toFixed(2)})
+                    </td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>{parameters.sample_rate.source}</td>
+                  </tr>
+                )}
+                {parameters?.carrier_frequency && (
+                  <tr style={{ borderBottom: '1px solid #101c36' }}>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Carrier Frequency</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>{formatFrequency(parameters.carrier_frequency.value)}</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: parameters.carrier_frequency.confidence >= 0.8 ? '#10b981' : parameters.carrier_frequency.confidence >= 0.5 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
+                      {parameters.carrier_frequency.confidence_label} ({parameters.carrier_frequency.confidence.toFixed(2)})
+                    </td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>{parameters.carrier_frequency.source}</td>
+                  </tr>
+                )}
+                {parameters?.bandwidth && (
+                  <tr style={{ borderBottom: '1px solid #101c36' }}>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Bandwidth</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>{formatFrequency(parameters.bandwidth.value)}</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: parameters.bandwidth.confidence >= 0.8 ? '#10b981' : parameters.bandwidth.confidence >= 0.5 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
+                      {parameters.bandwidth.confidence_label} ({parameters.bandwidth.confidence.toFixed(2)})
+                    </td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>{parameters.bandwidth.source}</td>
+                  </tr>
+                )}
+                {parameters?.symbol_rate && (
+                  <tr style={{ borderBottom: '1px solid #101c36' }}>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Symbol Rate</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>{formatSymbolRate(parameters.symbol_rate.value)}</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: parameters.symbol_rate.confidence >= 0.8 ? '#10b981' : parameters.symbol_rate.confidence >= 0.5 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
+                      {parameters.symbol_rate.confidence_label} ({parameters.symbol_rate.confidence.toFixed(2)})
+                    </td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>{parameters.symbol_rate.source}</td>
+                  </tr>
+                )}
+                {modulation !== 'Unknown' && (
+                  <tr style={{ borderBottom: '1px solid #101c36' }}>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Modulation</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#38bdf8', fontFamily: 'JetBrains Mono' }}>{modulation}</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: confidence >= 0.8 ? '#10b981' : confidence >= 0.5 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
+                      {confidence >= 0.85 ? 'High' : confidence >= 0.6 ? 'Medium' : 'Low'} ({confidence.toFixed(2)})
+                    </td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>Classifier</td>
+                  </tr>
+                )}
+                {parameters?.snr && (
+                  <tr>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>SNR</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>{parameters.snr.value.toFixed(1)} dB</td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: parameters.snr.confidence >= 0.8 ? '#10b981' : parameters.snr.confidence >= 0.5 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
+                      {parameters.snr.confidence_label} ({parameters.snr.confidence.toFixed(2)})
+                    </td>
+                    <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>{parameters.snr.source}</td>
+                  </tr>
+                )}
               </tbody>
             </table>
+            {!parameters && (
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', fontSize: '0.75rem' }}>
+                No parameter data available
+              </div>
+            )}
           </div>
         </div>
 
@@ -673,44 +841,57 @@ const Dashboard: React.FC = () => {
           <div className="panel-header">
             <div className="panel-title">
               <Activity size={14} />
-              <span>Live Analysis Log</span>
+              <span>Analysis Status</span>
             </div>
-            <button className="btn-icon-xs" onClick={() => setLogs([])}>Clear</button>
           </div>
           <div style={{
             flex: 1,
-            padding: '0.5rem 0.75rem',
+            padding: '0.75rem',
             overflowY: 'auto',
             fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '0.68rem',
+            fontSize: '0.72rem',
             display: 'flex',
             flexDirection: 'column',
-            gap: '0.35rem'
+            gap: '0.5rem'
           }}>
-            {logs.map((log, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: '50%',
-                  background: log.type === 'success'
-                    ? '#10b981'
-                    : log.type === 'primary'
-                    ? '#3b82f6'
-                    : '#64748b'
-                }} />
-                <span style={{ color: '#64748b' }}>{log.time}</span>
-                <span style={{
-                  color: log.type === 'primary'
-                    ? '#38bdf8'
-                    : log.type === 'success'
-                    ? '#e2e8f0'
-                    : '#94a3b8'
-                }}>
-                  {log.text}
-                </span>
+            {currentJob ? (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: currentJob.status === 'completed' ? '#10b981' : currentJob.status === 'processing' ? '#3b82f6' : currentJob.status === 'failed' ? '#ef4444' : '#64748b'
+                  }} />
+                  <span style={{ color: '#f1f5f9', fontWeight: 600 }}>Job #{currentJob.id}</span>
+                </div>
+                <div style={{ color: '#94a3b8', fontSize: '0.7rem', paddingLeft: '1rem' }}>
+                  File: {currentJob.signal_file?.original_filename || 'Unknown'}
+                </div>
+                <div style={{ color: '#94a3b8', fontSize: '0.7rem', paddingLeft: '1rem' }}>
+                  Status: {currentJob.status}
+                </div>
+                {currentJob.status === 'processing' && (
+                  <div style={{ color: '#3b82f6', fontSize: '0.7rem', paddingLeft: '1rem' }}>
+                    Progress: {currentJob.progress}%
+                  </div>
+                )}
+                {currentJob.status === 'completed' && currentJob.completed_at && (
+                  <div style={{ color: '#10b981', fontSize: '0.7rem', paddingLeft: '1rem' }}>
+                    Completed: {new Date(currentJob.completed_at).toLocaleString()}
+                  </div>
+                )}
+                {currentJob.error && (
+                  <div style={{ color: '#ef4444', fontSize: '0.7rem', paddingLeft: '1rem' }}>
+                    Error: {currentJob.error}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                No job selected
               </div>
-            ))}
+            )}
           </div>
         </div>
 
