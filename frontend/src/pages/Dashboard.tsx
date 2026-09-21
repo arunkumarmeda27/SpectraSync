@@ -887,7 +887,37 @@ const Dashboard: React.FC = () => {
                     </span>
                   </div>
                 </div>
+<<<<<<< HEAD
               ))
+=======
+                <div style={{ color: '#94a3b8', fontSize: '0.7rem', paddingLeft: '1rem' }}>
+                  File: {currentJob.signal_file?.original_filename || currentJob.signal_file?.filename || 'Unknown'}
+                </div>
+                <div style={{ color: '#94a3b8', fontSize: '0.7rem', paddingLeft: '1rem' }}>
+                  Status: {currentJob.status}
+                </div>
+                {(currentJob.status === 'processing' || currentJob.status === 'validating') && (
+                  <div style={{ color: '#3b82f6', fontSize: '0.7rem', paddingLeft: '1rem' }}>
+                    Progress: {currentJob.progress ?? 0}%
+                  </div>
+                )}
+                {currentJob.status === 'completed' && currentJob.completed_at && (
+                  <div style={{ color: '#10b981', fontSize: '0.7rem', paddingLeft: '1rem' }}>
+                    Completed: {new Date(currentJob.completed_at).toLocaleString()}
+                  </div>
+                )}
+                {currentJob.error && (
+                  <div style={{ color: '#ef4444', fontSize: '0.7rem', paddingLeft: '1rem' }}>
+                    Error: {currentJob.error}
+                  </div>
+                )}
+                {!currentJob.error && !currentJob.completed_at && currentJob.status !== 'processing' && currentJob.status !== 'validating' && (
+                  <div style={{ color: '#94a3b8', fontSize: '0.7rem', paddingLeft: '1rem' }}>
+                    Live processing events unavailable
+                  </div>
+                )}
+              </>
+>>>>>>> 5515fdf42fe89a0d3610dd03da3a7f1b1c02a7ba
             ) : (
               <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', fontSize: '0.8rem' }}>
                 <p style={{ marginBottom: '0.5rem' }}>No recent analyses</p>
