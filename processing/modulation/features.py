@@ -8,11 +8,22 @@ class ModulationFeatureExtractor:
     """Extracts Higher-Order Cumulants and statistical shape features from complex baseband signals."""
 
     @classmethod
-    def extract_features(cls, samples: np.ndarray) -> Dict[str, float]:
-        """Extract statistical and cumulant features from complex baseband signal."""
+    def extract_features(cls, samples: np.ndarray, max_samples: int = 32768) -> Dict[str, float]:
+        """Extract statistical and cumulant features from complex baseband signal.
+
+        Args:
+            samples: Complex baseband signal
+            max_samples: Maximum number of samples to process (default 32768 for speed)
+        """
         n = len(samples)
         if n < 128:
             return {f"c_{k}": 0.0 for k in ["20", "21", "40", "41", "42"]}
+
+        # Downsample if too large for faster feature extraction
+        if n > max_samples:
+            step = n // max_samples
+            samples = samples[::step][:max_samples]
+            n = len(samples)
 
         # Normalize signal to unit energy: E[|r|^2] = 1
         mean_power = np.mean(np.abs(samples)**2)
@@ -23,12 +34,16 @@ class ModulationFeatureExtractor:
 
         r = norm_samples
 
-        # Moments
-        m20 = np.mean(r**2)
-        m21 = np.mean(np.abs(r)**2)  # Should be ~1.0
+        # Precompute powers for reuse
+        r_squared = r**2
+        r_abs_squared = np.abs(r)**2  # Should be ~1.0
+
+        # Moments (vectorized)
+        m20 = np.mean(r_squared)
+        m21 = np.mean(r_abs_squared)
         m40 = np.mean(r**4)
         m41 = np.mean((r**3) * np.conj(r))
-        m42 = np.mean(np.abs(r)**4)
+        m42 = np.mean(r_abs_squared**2)
 
         # Higher-Order Cumulants
         c20 = m20
@@ -43,8 +58,8 @@ class ModulationFeatureExtractor:
         abs_c41 = float(np.abs(c41))
         abs_c42 = float(np.abs(c42))
 
-        # Instantaneous envelope features
-        env = np.abs(r)
+        # Instantaneous envelope features (reuse r_abs_squared)
+        env = np.sqrt(r_abs_squared)
         mean_env = np.mean(env)
         var_env = float(np.var(env))
 
@@ -54,15 +69,17 @@ class ModulationFeatureExtractor:
         fft_a = np.fft.fft(a_cn[:n_fft])
         gamma_max = float(np.max(np.abs(fft_a)**2) / n_fft)
 
-        # Instantaneous phase features
-        phase = np.unwrap(np.angle(r))
+        # Instantaneous phase & frequency features (on 4096-sample window for ultra-fast calculation)
+        sub_n = min(len(r), 4096)
+        r_sub = r[:sub_n]
+        phase = np.unwrap(np.angle(r_sub))
         sigma_dp = float(np.std(phase))
 
         # Instantaneous frequency: phase derivative
         inst_freq = np.diff(phase) / (2.0 * np.pi)
         sigma_af = float(np.std(inst_freq))
 
-        # Spectral symmetry (P_sym)
+        # Spectral symmetry (P_sym) - reuse single FFT
         fft_r = np.abs(np.fft.fftshift(np.fft.fft(r[:n_fft])))**2
         half_n = n_fft // 2
         p_lower = np.sum(fft_r[:half_n])

@@ -22,6 +22,7 @@ const ParametersPage: React.FC = () => {
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [parameterData, setParameterData] = useState<ParameterDetail[]>([]);
   const [selectedParam, setSelectedParam] = useState<ParameterDetail | null>(null);
 
@@ -45,6 +46,7 @@ const ParametersPage: React.FC = () => {
   };
 
   const loadAnalysis = async (jobId: number) => {
+    setLoadingAnalysis(true);
     try {
       const analysisResult = await getAnalysisResult(jobId);
       setResult(analysisResult);
@@ -158,6 +160,8 @@ const ParametersPage: React.FC = () => {
       }
     } catch (err) {
       addToast('error', 'Failed to load analysis result');
+    } finally {
+      setLoadingAnalysis(false);
     }
   };
 
@@ -192,11 +196,11 @@ const ParametersPage: React.FC = () => {
     addToast('success', 'Exported parameter provenance CSV.');
   };
 
-  if (loading) {
+  if (loading || loadingAnalysis) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '2rem' }}>
-        <RefreshCw size={24} className="spin" />
-        <span style={{ color: '#94a3b8' }}>Loading analysis jobs...</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', padding: '4rem' }}>
+        <RefreshCw size={24} className="spin" style={{ color: '#3b82f6' }} />
+        <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Loading signal parameters & metrics...</span>
       </div>
     );
   }
@@ -217,7 +221,7 @@ const ParametersPage: React.FC = () => {
     return (
       <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
         <AlertCircle size={48} style={{ opacity: 0.3, marginBottom: '1rem', color: '#64748b' }} />
-        <p style={{ color: '#64748b' }}>Unable to load parameters for the selected job.</p>
+        <p style={{ color: '#64748b' }}>No parameter data available for this job yet.</p>
       </div>
     );
   }

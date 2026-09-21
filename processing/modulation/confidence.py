@@ -17,10 +17,19 @@ class ModulationConfidenceEngine:
         samples: np.ndarray,
         symbol_rate: Optional[float] = None,
         bandwidth: Optional[float] = None,
-        snr_db: Optional[float] = None
+        snr_db: Optional[float] = None,
+        max_samples: int = 16384
     ) -> Dict[str, Any]:
-        """Produce ranked modulation candidates with physical consistency verification."""
-        features = ModulationFeatureExtractor.extract_features(samples)
+        """Produce ranked modulation candidates with physical consistency verification.
+
+        Args:
+            samples: Complex baseband signal
+            symbol_rate: Estimated symbol rate (Hz)
+            bandwidth: Estimated bandwidth (Hz)
+            snr_db: Estimated SNR (dB)
+            max_samples: Maximum samples to process for feature extraction (default 16384 for ~8ms execution)
+        """
+        features = ModulationFeatureExtractor.extract_features(samples, max_samples=max_samples)
         classical_candidates = ClassicalModulationClassifier.classify(features)
         ml_candidates = MlModulationClassifier.classify(features)
 

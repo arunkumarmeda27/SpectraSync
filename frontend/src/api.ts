@@ -3,7 +3,7 @@ import axios from 'axios';
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 30000,
+  timeout: 120000, // 2 minutes for large file uploads
 });
 
 api.interceptors.request.use((config) => {
@@ -35,10 +35,10 @@ export interface SignalFile {
   format: string;
   size: number;
   checksum: string;
-  sample_rate: number | null;
-  channels: number | null;
-  sample_format: string | null;
-  center_frequency: number | null;
+  sample_rate: number;
+  channels: number;
+  sample_format: string;
+  center_frequency: number;
   storage_path: string;
   uploaded_at: string;
 }
@@ -112,7 +112,6 @@ export const uploadFile = async (file: File, onProgress?: (p: number) => void) =
   const form = new FormData();
   form.append('file', file);
   const res = await api.post<FileUploadResponse>('/files/upload', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: e => {
       if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
     },

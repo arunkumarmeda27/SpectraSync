@@ -263,11 +263,15 @@ class DspPipeline:
         st6 = StageResult(stage_name=StageName.MODULATION_CLASSIFICATION)
         self._notify(StageName.MODULATION_CLASSIFICATION, 55, "Classifying candidate modulations")
 
+        # Use max_samples for faster feature extraction (default 32768)
+        mod_max_samples = min(cfg.get("modulation_max_samples", 32768), len(proc_samples))
+
         mod_eval = ModulationConfidenceEngine.evaluate(
             proc_samples,
             symbol_rate=sym_rate_est["value"] if sym_rate_est["confidence"] > 0.4 else None,
             bandwidth=bw_est["value"],
-            snr_db=snr_est["value"]
+            snr_db=snr_est["value"],
+            max_samples=mod_max_samples
         )
         primary_mod = mod_eval["primary_modulation"]
 
