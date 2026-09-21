@@ -1,20 +1,31 @@
 import React, { useEffect, useRef } from 'react';
+import type {
+  ConstellationVisualization,
+  FftVisualization,
+  SpectrogramVisualization,
+  WaveformVisualization,
+} from '../types/visualizations';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Dark Workstation Canvas Visualizations
-// ═══════════════════════════════════════════════════════════════════════════════
+// Real backend-driven plotting only. No generated waveform/spectrum/constellation data.
 
-// ─── 1. Live Signal Spectrum (FFT Power Spectral Density) ─────────────────────
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const formatFrequencyLabel = (value: number) => {
+  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(3)} MHz`;
+  if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(3)} kHz`;
+  return `${value.toFixed(0)} Hz`;
+};
+
 export const LiveSignalSpectrum: React.FC<{
-  data?: number[];
+  data?: FftVisualization | null;
   centerFreq?: number;
   span?: number;
-}> = ({ data, centerFreq = 437.123, span = 2.0 }) => {
+}> = ({ data, centerFreq: _centerFreq, span: _span }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !data || !data.frequencies?.length || !data.magnitudes_db?.length) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -22,141 +33,112 @@ export const LiveSignalSpectrum: React.FC<{
     const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
 
-    // Margins
-    const padL = 50;
-    const padB = 35;
-    const padR = 15;
-    const padT = 15;
+    const padL = 52;
+    const padB = 34;
+    const padR = 14;
+    const padT = 14;
     const plotW = width - padL - padR;
     const plotH = height - padT - padB;
 
-    // Dark Background
     ctx.fillStyle = '#0a0f1e';
     ctx.fillRect(0, 0, width, height);
-
-    // Grid lines (subtle dark blue)
     ctx.strokeStyle = '#1a2645';
     ctx.lineWidth = 1;
-
-    // Horizontal grid (Power dB: 0, -20, -40, -60, -80, -100)
-    const yLabels = ['0', '-20', '-40', '-60', '-80', '-100'];
-    ctx.font = '10px JetBrains Mono, monospace';
+    ctx.font = '9px JetBrains Mono, monospace';
     ctx.fillStyle = '#64748b';
-    ctx.textAlign = 'right';
 
-    yLabels.forEach((label, idx) => {
-      const y = padT + (idx / (yLabels.length - 1)) * plotH;
+    const freqs = data.frequencies;
+    const mags = data.magnitudes_db;
+    const minDb = Math.min(...mags);
+    const maxDb = Math.max(...mags);
+    const dbRange = maxDb - minDb || 1;
+
+    for (let i = 0; i <= 5; i++) {
+      const y = padT + (i / 5) * plotH;
       ctx.beginPath();
       ctx.moveTo(padL, y);
       ctx.lineTo(width - padR, y);
       ctx.stroke();
-      ctx.fillText(label + ' dB', padL - 6, y + 4);
-    });
+      const label = (maxDb - (i / 5) * dbRange).toFixed(0);
+      ctx.textAlign = 'right';
+      ctx.fillText(`${label} dB`, padL - 6, y + 3);
+    }
 
-    // Vertical grid (Frequency axis)
-    const freqStart = centerFreq - span / 2;
-    const numFreqTicks = 7;
-    for (let i = 0; i < numFreqTicks; i++) {
-      const freq = freqStart + (i / (numFreqTicks - 1)) * span;
-      const x = padL + (i / (numFreqTicks - 1)) * plotW;
+    const minFreq = freqs[0];
+    const maxFreq = freqs[freqs.length - 1];
+    const freqRange = maxFreq - minFreq || 1;
+
+    for (let i = 0; i <= 6; i++) {
+      const x = padL + (i / 6) * plotW;
       ctx.beginPath();
       ctx.moveTo(x, padT);
       ctx.lineTo(x, height - padB);
       ctx.stroke();
+      const freq = minFreq + (i / 6) * freqRange;
       ctx.textAlign = 'center';
-      ctx.fillText(freq.toFixed(2), x, height - 18);
+      ctx.fillText(formatFrequencyLabel(freq), x, height - 14);
     }
 
-    // Axis labels
     ctx.fillStyle = '#94a3b8';
-    ctx.font = '11px Inter, sans-serif';
+    ctx.font = '10px Inter, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Frequency (MHz)', padL + plotW / 2, height - 2);
+    ctx.fillText('Frequency', padL + plotW / 2, height - 2);
     ctx.save();
     ctx.translate(12, padT + plotH / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.fillText('Power (dB)', 0, 0);
     ctx.restore();
 
-    // Generate realistic spectrum trace
-    const numPoints = 600;
-    const spectrumData: number[] = [];
-    for (let i = 0; i < numPoints; i++) {
-      const freqNorm = i / numPoints;
-      const freq = freqStart + freqNorm * span;
-      const distFromCenter = Math.abs(freq - centerFreq);
-
-      // Gaussian-shaped signal peak at center frequency
-      const signalPeak = -12.4 * Math.exp(-Math.pow(distFromCenter / 0.12, 2));
-
-      // Noise floor with small random variations
-      const noiseFloor = -85 + (Math.random() - 0.5) * 8;
-
-      // Combine signal + noise
-      const power = Math.max(signalPeak, noiseFloor);
-      spectrumData.push(power);
-    }
-
-    // Draw spectrum trace with neon glow
     ctx.shadowBlur = 8;
     ctx.shadowColor = '#3b82f6';
     ctx.strokeStyle = '#3b82f6';
     ctx.lineWidth = 1.8;
     ctx.beginPath();
 
-    for (let i = 0; i < spectrumData.length; i++) {
-      const x = padL + (i / (spectrumData.length - 1)) * plotW;
-      const powerDb = spectrumData[i];
-      const yNorm = (powerDb - 0) / (-100 - 0);
-      const y = padT + yNorm * plotH;
-      if (i === 0) ctx.moveTo(x, y);
+    mags.forEach((mag, index) => {
+      const x = padL + (index / (mags.length - 1)) * plotW;
+      const yNorm = (mag - minDb) / dbRange;
+      const y = padT + (1 - clamp(yNorm, 0, 1)) * plotH;
+      if (index === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
-    }
+    });
     ctx.stroke();
     ctx.shadowBlur = 0;
 
-    // Peak marker at center frequency
-    const peakX = padL + 0.5 * plotW;
-    const peakY = padT + ((-12.4 - 0) / (-100 - 0)) * plotH;
+    if (typeof data.peak_frequency_hz === 'number' && typeof data.peak_power_dbfs === 'number') {
+      const peakIdx = freqs.findIndex((freq) => Math.abs(freq - data.peak_frequency_hz!) < 1e-6);
+      const markerX = padL + (peakIdx >= 0 ? peakIdx / (freqs.length - 1) : 0.5) * plotW;
+      const markerY = padT + (1 - clamp((data.peak_power_dbfs - minDb) / dbRange, 0, 1)) * plotH;
+      ctx.setLineDash([5, 5]);
+      ctx.strokeStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.moveTo(markerX, markerY);
+      ctx.lineTo(markerX, height - padB);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#f59e0b';
+      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(formatFrequencyLabel(data.peak_frequency_hz), markerX, markerY - 8);
+      ctx.fillText(`${data.peak_power_dbfs.toFixed(1)} dB`, markerX, markerY - 20);
+    }
+  }, [data]);
 
-    // Dashed line to peak
-    ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = '#f59e0b';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(peakX, peakY);
-    ctx.lineTo(peakX, height - padB);
-    ctx.stroke();
-    ctx.setLineDash([]);
+  if (!data || !data.frequencies?.length || !data.magnitudes_db?.length) {
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', color: '#64748b', fontSize: '0.8rem' }}>FFT unavailable</div>;
+  }
 
-    // Peak annotation
-    ctx.fillStyle = '#f59e0b';
-    ctx.font = '10px JetBrains Mono, monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${centerFreq.toFixed(3)} MHz`, peakX, peakY - 8);
-    ctx.fillText('-12.4 dB', peakX, peakY - 20);
-
-  }, [data, centerFreq, span]);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      width={700}
-      height={280}
-      style={{ width: '100%', height: '100%', display: 'block' }}
-    />
-  );
+  return <canvas ref={canvasRef} width={700} height={280} style={{ width: '100%', height: '100%', display: 'block' }} />;
 };
 
-// ─── 2. Waterfall Spectrogram (STFT Time-Frequency Heatmap) ───────────────────
 export const WaterfallSpectrogram: React.FC<{
-  data?: number[][];
+  data?: SpectrogramVisualization | null;
 }> = ({ data }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !data || !data.times?.length || !data.frequencies?.length || !data.power_matrix_db?.length) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -164,227 +146,194 @@ export const WaterfallSpectrogram: React.FC<{
     const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
 
-    const padL = 50;
-    const padB = 35;
-    const padR = 60; // Right margin for colorbar
-    const padT = 15;
+    const padL = 52;
+    const padB = 34;
+    const padR = 60;
+    const padT = 14;
     const plotW = width - padL - padR;
     const plotH = height - padT - padB;
 
-    // Dark background
     ctx.fillStyle = '#0a0f1e';
     ctx.fillRect(0, 0, width, height);
 
-    // Generate spectrogram data (time x frequency)
-    const numTimeSteps = 80;
-    const numFreqBins = 256;
-    const spectrogramData: number[][] = [];
+    const matrix = data.power_matrix_db;
+    const minDb = data.min_db ?? Math.min(...matrix.flat());
+    const maxDb = data.max_db ?? Math.max(...matrix.flat());
+    const dbRange = maxDb - minDb || 1;
 
-    for (let t = 0; t < numTimeSteps; t++) {
-      const row: number[] = [];
-      for (let f = 0; f < numFreqBins; f++) {
-        const centerBin = numFreqBins / 2;
-        const distFromCenter = Math.abs(f - centerBin);
+    const freqBins = matrix.length;
+    const timeBins = matrix[0]?.length || 0;
+    if (!timeBins) return;
 
-        // Strong signal at center frequency bin
-        const signalStrength = Math.exp(-Math.pow(distFromCenter / 30, 2));
-        const noise = Math.random() * 0.15;
-        const intensity = Math.min(1.0, signalStrength * 0.85 + noise);
+    const cellW = plotW / timeBins;
+    const cellH = plotH / freqBins;
 
-        row.push(intensity);
-      }
-      spectrogramData.push(row);
-    }
-
-    // Draw spectrogram as heatmap
-    const cellW = plotW / numTimeSteps;
-    const cellH = plotH / numFreqBins;
-
-    for (let t = 0; t < numTimeSteps; t++) {
-      for (let f = 0; f < numFreqBins; f++) {
-        const intensity = spectrogramData[t][f];
-        const color = getTurboColor(intensity);
-        ctx.fillStyle = color;
+    for (let t = 0; t < timeBins; t++) {
+      for (let f = 0; f < freqBins; f++) {
+        const power = matrix[f][t];
+        const intensity = clamp((power - minDb) / dbRange, 0, 1);
+        ctx.fillStyle = getTurboColor(intensity);
         const x = padL + t * cellW;
-        const y = padT + (numFreqBins - 1 - f) * cellH;
+        const y = padT + (freqBins - 1 - f) * cellH;
         ctx.fillRect(x, y, Math.ceil(cellW) + 1, Math.ceil(cellH) + 1);
       }
     }
 
-    // Axes
     ctx.strokeStyle = '#1a2645';
     ctx.lineWidth = 1;
     ctx.strokeRect(padL, padT, plotW, plotH);
 
-    // Time axis labels
     ctx.fillStyle = '#64748b';
-    ctx.font = '10px JetBrains Mono, monospace';
+    ctx.font = '9px JetBrains Mono, monospace';
     ctx.textAlign = 'center';
     for (let i = 0; i <= 4; i++) {
-      const t = i * 5;
       const x = padL + (i / 4) * plotW;
-      ctx.fillText(`${t}s`, x, height - 18);
+      const t = data.times[0] + (i / 4) * (data.times[data.times.length - 1] - data.times[0]);
+      ctx.fillText(`${t.toFixed(2)}s`, x, height - 14);
     }
     ctx.fillText('Time (s)', padL + plotW / 2, height - 2);
 
-    // Frequency axis labels
     ctx.textAlign = 'right';
-    const freqs = [436.6, 436.9, 437.2, 437.5, 437.8];
-    freqs.forEach((freq, idx) => {
-      const y = padT + plotH - (idx / (freqs.length - 1)) * plotH;
-      ctx.fillText(`${freq.toFixed(1)}`, padL - 6, y + 4);
-    });
+    for (let i = 0; i <= 4; i++) {
+      const y = padT + (i / 4) * plotH;
+      const f = data.frequencies[0] + (1 - i / 4) * (data.frequencies[data.frequencies.length - 1] - data.frequencies[0]);
+      ctx.fillText(formatFrequencyLabel(f), padL - 6, y + 4);
+    }
     ctx.save();
     ctx.translate(12, padT + plotH / 2);
     ctx.rotate(-Math.PI / 2);
-    ctx.fillText('Frequency (MHz)', 0, 0);
+    ctx.fillText('Frequency', 0, 0);
     ctx.restore();
 
-    // Colorbar
-    const barX = width - padR + 15;
-    const barW = 18;
-    const barH = plotH;
+    const barX = width - padR + 16;
     const barY = padT;
+    const barH = plotH;
     for (let i = 0; i < 100; i++) {
-      const intensity = 1.0 - i / 100;
+      const intensity = 1 - i / 100;
       ctx.fillStyle = getTurboColor(intensity);
-      ctx.fillRect(barX, barY + (i / 100) * barH, barW, barH / 100 + 1);
+      ctx.fillRect(barX, barY + (i / 100) * barH, 18, Math.max(1, barH / 100));
     }
     ctx.strokeStyle = '#1a2645';
-    ctx.strokeRect(barX, barY, barW, barH);
-
-    // Colorbar labels
-    ctx.fillStyle = '#64748b';
-    ctx.font = '9px JetBrains Mono, monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText('0 dB', barX + barW + 4, barY + 10);
-    ctx.fillText('-100 dB', barX + barW + 4, barY + barH);
-
+    ctx.strokeRect(barX, barY, 18, barH);
+    ctx.font = '8px JetBrains Mono, monospace';
+    ctx.fillText(`${maxDb.toFixed(0)} dB`, barX + 24, barY + 10);
+    ctx.fillText(`${minDb.toFixed(0)} dB`, barX + 24, barY + barH);
   }, [data]);
 
-  return (
-    <canvas
-      ref={canvasRef}
-      width={700}
-      height={300}
-      style={{ width: '100%', height: '100%', display: 'block' }}
-    />
-  );
+  if (!data || !data.times?.length || !data.frequencies?.length || !data.power_matrix_db?.length) {
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', color: '#64748b', fontSize: '0.8rem' }}>Spectrogram unavailable</div>;
+  }
+
+  return <canvas ref={canvasRef} width={700} height={300} style={{ width: '100%', height: '100%', display: 'block' }} />;
 };
 
-// ─── 3. Time Domain Waveform (I/Q Signal) ──────────────────────────────────────
 export const TimeDomainWaveform: React.FC<{
-  data?: { i: number[]; q: number[] };
+  data?: WaveformVisualization | null;
 }> = ({ data }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !data || !data.time?.length || !data.i_samples?.length || !data.q_samples?.length) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const width = canvas.width;
     const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
-
-    const padL = 45;
-    const padB = 30;
-    const padR = 12;
-    const padT = 12;
-    const plotW = width - padL - padR;
-    const plotH = height - padT - padB;
-
-    // Dark background
     ctx.fillStyle = '#0a0f1e';
     ctx.fillRect(0, 0, width, height);
 
-    // Grid
+    const padL = 52;
+    const padB = 34;
+    const padR = 12;
+    const padT = 14;
+    const plotW = width - padL - padR;
+    const plotH = height - padT - padB;
+    const samples = data.i_samples;
+    const minVal = Math.min(...samples, ...data.q_samples);
+    const maxVal = Math.max(...samples, ...data.q_samples);
+    const range = maxVal - minVal || 1;
+
     ctx.strokeStyle = '#1a2645';
     ctx.lineWidth = 1;
-    const yLabels = ['1.0', '0.5', '0', '-0.5', '-1.0'];
     ctx.font = '9px JetBrains Mono, monospace';
     ctx.fillStyle = '#64748b';
-    ctx.textAlign = 'right';
 
-    yLabels.forEach((label, idx) => {
-      const y = padT + (idx / (yLabels.length - 1)) * plotH;
+    for (let i = 0; i <= 5; i++) {
+      const y = padT + (i / 5) * plotH;
       ctx.beginPath();
       ctx.moveTo(padL, y);
       ctx.lineTo(width - padR, y);
       ctx.stroke();
+      const label = (maxVal - (i / 5) * range).toFixed(2);
+      ctx.textAlign = 'right';
       ctx.fillText(label, padL - 6, y + 3);
-    });
+    }
 
-    // Time ticks
     ctx.textAlign = 'center';
-    for (let i = 0; i <= 10; i += 2) {
-      const x = padL + (i / 10) * plotW;
+    for (let i = 0; i <= 5; i++) {
+      const x = padL + (i / 5) * plotW;
+      const t = data.time[0] + (i / 5) * (data.time[data.time.length - 1] - data.time[0]);
       ctx.beginPath();
       ctx.moveTo(x, padT);
       ctx.lineTo(x, height - padB);
       ctx.stroke();
-      ctx.fillText(`${i}`, x, height - 16);
+      ctx.fillText(`${(t * 1000).toFixed(2)} ms`, x, height - 14);
     }
-    ctx.fillText('Time (ms)', padL + plotW / 2, height - 2);
 
+    const drawSeries = (values: number[], color: string) => {
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.4;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = color;
+      values.forEach((value, index) => {
+        const x = padL + (index / (values.length - 1)) * plotW;
+        const y = padT + (1 - clamp((value - minVal) / range, 0, 1)) * plotH;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    };
+
+    drawSeries(data.i_samples, '#3b82f6');
+    drawSeries(data.q_samples, '#10b981');
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('Time (ms)', padL + plotW / 2, height - 2);
     ctx.save();
-    ctx.translate(10, padT + plotH / 2);
+    ctx.translate(12, padT + plotH / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.fillText('Amplitude', 0, 0);
     ctx.restore();
-
-    // Synthesize high-density modulated carrier
-    const numPoints = 800;
-    ctx.shadowBlur = 6;
-    ctx.shadowColor = '#3b82f6';
-    ctx.strokeStyle = '#3b82f6';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-
-    for (let i = 0; i < numPoints; i++) {
-      const t = (i / numPoints) * 10; // 10ms span
-      const envelope = 0.5 + 0.35 * Math.sin(t * 1.2) * Math.cos(t * 0.6);
-      const carrier = Math.sin(t * 60.0 + Math.sin(t * 2.5));
-      const val = Math.max(-1, Math.min(1, envelope * carrier));
-
-      const x = padL + (i / (numPoints - 1)) * plotW;
-      const y = padT + ((-val + 1) / 2) * plotH;
-
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-
   }, [data]);
 
-  return (
-    <canvas
-      ref={canvasRef}
-      width={480}
-      height={220}
-      style={{ width: '100%', height: '100%', display: 'block' }}
-    />
-  );
+  if (!data || !data.time?.length || !data.i_samples?.length || !data.q_samples?.length) {
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', color: '#64748b', fontSize: '0.8rem' }}>Waveform unavailable</div>;
+  }
+
+  return <canvas ref={canvasRef} width={700} height={220} style={{ width: '100%', height: '100%', display: 'block' }} />;
 };
 
-// ─── 4. Constellation Diagram (I/Q Scatter) ────────────────────────────────────
 export const ConstellationDiagram: React.FC<{
-  data?: { i: number[]; q: number[] };
+  data?: ConstellationVisualization | null;
   modulation?: string;
-}> = ({ data, modulation = 'QPSK' }) => {
+}> = ({ data, modulation }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !data || !data.i?.length || !data.q?.length) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const width = canvas.width;
     const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = '#0a0f1e';
+    ctx.fillRect(0, 0, width, height);
 
     const padL = 42;
     const padB = 32;
@@ -393,156 +342,96 @@ export const ConstellationDiagram: React.FC<{
     const plotW = width - padL - padR;
     const plotH = height - padT - padB;
 
-    // Dark background
-    ctx.fillStyle = '#0a0f1e';
-    ctx.fillRect(0, 0, width, height);
+    const maxAbsI = Math.max(...data.i.map(Math.abs), 1);
+    const maxAbsQ = Math.max(...data.q.map(Math.abs), 1);
+    const maxAbs = Math.max(maxAbsI, maxAbsQ);
+    const range = maxAbs * 2.0;
 
-    // Grid (I and Q axes from -2 to +2)
     ctx.strokeStyle = '#1a2645';
     ctx.lineWidth = 1;
-
-    // Horizontal lines
-    const yLabels = ['2', '1', '0', '-1', '-2'];
     ctx.font = '9px JetBrains Mono, monospace';
     ctx.fillStyle = '#64748b';
     ctx.textAlign = 'right';
 
-    yLabels.forEach((label, idx) => {
-      const y = padT + (idx / (yLabels.length - 1)) * plotH;
+    for (let i = 0; i <= 4; i++) {
+      const y = padT + (i / 4) * plotH;
       ctx.beginPath();
       ctx.moveTo(padL, y);
       ctx.lineTo(width - padR, y);
       ctx.stroke();
-      ctx.fillText(label, padL - 6, y + 3);
-    });
+      const value = (maxAbs - (i / 4) * range).toFixed(1);
+      ctx.fillText(value, padL - 6, y + 3);
+    }
 
-    // Vertical lines
     ctx.textAlign = 'center';
-    yLabels.forEach((label, idx) => {
-      const x = padL + (idx / (yLabels.length - 1)) * plotW;
+    for (let i = 0; i <= 4; i++) {
+      const x = padL + (i / 4) * plotW;
+      const value = (-maxAbs + (i / 4) * range).toFixed(1);
       ctx.beginPath();
       ctx.moveTo(x, padT);
       ctx.lineTo(x, height - padB);
       ctx.stroke();
-      ctx.fillText(label, x, height - 16);
-    });
+      ctx.fillText(value, x, height - 14);
+    }
 
-    // Axes labels
     ctx.fillStyle = '#94a3b8';
     ctx.font = '10px Inter, sans-serif';
     ctx.fillText('In-Phase (I)', padL + plotW / 2, height - 2);
     ctx.save();
-    ctx.translate(10, padT + plotH / 2);
+    ctx.translate(12, padT + plotH / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.fillText('Quadrature (Q)', 0, 0);
     ctx.restore();
 
-    // Generate QPSK constellation points with noise
-    const numPoints = 1200;
-    const clusters = [
-      { i: 0.707, q: 0.707 },
-      { i: -0.707, q: 0.707 },
-      { i: -0.707, q: -0.707 },
-      { i: 0.707, q: -0.707 }
-    ];
-
-    for (let p = 0; p < numPoints; p++) {
-      const cluster = clusters[Math.floor(Math.random() * 4)];
-      const noiseI = (Math.random() - 0.5) * 0.15;
-      const noiseQ = (Math.random() - 0.5) * 0.15;
-      const iVal = cluster.i + noiseI;
-      const qVal = cluster.q + noiseQ;
-
-      const xCanvas = padL + ((iVal + 2) / 4) * plotW;
-      const yCanvas = padT + ((-qVal + 2) / 4) * plotH;
-
-      ctx.fillStyle = 'rgba(59, 130, 246, 0.3)';
+    const step = Math.max(1, Math.floor(data.i.length / 5000));
+    ctx.fillStyle = 'rgba(59, 130, 246, 0.35)';
+    for (let idx = 0; idx < data.i.length; idx += step) {
+      const x = padL + ((data.i[idx] + maxAbs) / range) * plotW;
+      const y = padT + ((-data.q[idx] + maxAbs) / range) * plotH;
       ctx.beginPath();
-      ctx.arc(xCanvas, yCanvas, 1.8, 0, Math.PI * 2);
+      ctx.arc(x, y, 1.3, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Draw glow at cluster centers
-    clusters.forEach(cluster => {
-      const xCanvas = padL + ((cluster.i + 2) / 4) * plotW;
-      const yCanvas = padT + ((-cluster.q + 2) / 4) * plotH;
-
-      const gradient = ctx.createRadialGradient(xCanvas, yCanvas, 0, xCanvas, yCanvas, 20);
-      gradient.addColorStop(0, 'rgba(59, 130, 246, 0.8)');
-      gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(xCanvas, yCanvas, 20, 0, Math.PI * 2);
-      ctx.fill();
-    });
-
+    if (modulation) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '10px Inter, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(modulation, width - 10, 18);
+    }
   }, [data, modulation]);
 
-  return (
-    <canvas
-      ref={canvasRef}
-      width={360}
-      height={240}
-      style={{ width: '100%', height: '100%', display: 'block' }}
-    />
-  );
+  if (!data || !data.i?.length || !data.q?.length) {
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', color: '#64748b', fontSize: '0.8rem' }}>Constellation unavailable</div>;
+  }
+
+  return <canvas ref={canvasRef} width={360} height={240} style={{ width: '100%', height: '100%', display: 'block' }} />;
 };
 
-// ─── 5. Mini Constellation for Signal DNA Card ─────────────────────────────────
 export const MiniConstellationPlot: React.FC<{
+  data?: ConstellationVisualization | null;
   modulation?: string;
-}> = ({ modulation = 'QPSK' }) => {
+}> = ({ data }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !data || !data.i?.length || !data.q?.length) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const width = canvas.width;
     const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
-
-    // Dark background
     ctx.fillStyle = '#0a0f1e';
     ctx.fillRect(0, 0, width, height);
 
-    // QPSK 4 clusters
-    const clusters = [
-      { i: 0.65, q: 0.65 },
-      { i: -0.65, q: 0.65 },
-      { i: -0.65, q: -0.65 },
-      { i: 0.65, q: -0.65 }
-    ];
-
     const centerX = width / 2;
     const centerY = height / 2;
-    const scale = Math.min(width, height) * 0.32;
+    const maxAbs = Math.max(...data.i.map(Math.abs), ...data.q.map(Math.abs), 1);
+    const scale = Math.min(width, height) * 0.28;
 
-    clusters.forEach(cluster => {
-      const x = centerX + cluster.i * scale;
-      const y = centerY - cluster.q * scale;
-
-      // Glow
-      const gradient = ctx.createRadialGradient(x, y, 0, x, y, 12);
-      gradient.addColorStop(0, 'rgba(16, 185, 129, 0.9)');
-      gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(x, y, 12, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Core dot
-      ctx.fillStyle = '#10b981';
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
-      ctx.fill();
-    });
-
-    // Crosshair axes
     ctx.strokeStyle = 'rgba(100, 116, 139, 0.3)';
-    ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(centerX, 0);
     ctx.lineTo(centerX, height);
@@ -550,29 +439,35 @@ export const MiniConstellationPlot: React.FC<{
     ctx.lineTo(width, centerY);
     ctx.stroke();
 
-  }, [modulation]);
+    const step = Math.max(1, Math.floor(data.i.length / 500));
+    for (let idx = 0; idx < data.i.length; idx += step) {
+      const x = centerX + (data.i[idx] / maxAbs) * scale;
+      const y = centerY - (data.q[idx] / maxAbs) * scale;
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, 8);
+      grad.addColorStop(0, 'rgba(16, 185, 129, 0.9)');
+      grad.addColorStop(1, 'rgba(16, 185, 129, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#10b981';
+      ctx.beginPath();
+      ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }, [data]);
 
-  return (
-    <canvas
-      ref={canvasRef}
-      width={120}
-      height={120}
-      style={{ width: '100%', height: '100%', display: 'block' }}
-    />
-  );
+  if (!data || !data.i?.length || !data.q?.length) {
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', color: '#64748b', fontSize: '0.72rem' }}>No constellation</div>;
+  }
+
+  return <canvas ref={canvasRef} width={120} height={120} style={{ width: '100%', height: '100%', display: 'block' }} />;
 };
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Helper: Turbo Colormap (Perceptually uniform intensity → color)
-// ═══════════════════════════════════════════════════════════════════════════════
 function getTurboColor(intensity: number): string {
-  // Clamp 0-1
-  const t = Math.max(0, Math.min(1, intensity));
-
-  // Turbo color approximation
-  const r = Math.floor(Math.max(0, Math.min(255, 34.61 + t * (1172.33 - 10793.56 * t + 33300.12 * t * t - 38774.16 * t * t * t + 16211.12 * t * t * t * t))));
-  const g = Math.floor(Math.max(0, Math.min(255, 23.31 + t * (557.33 + 1225.33 * t - 3574.96 * t * t + 1073.77 * t * t * t))));
-  const b = Math.floor(Math.max(0, Math.min(255, 27.2 + t * (3211.1 - 15327.97 * t + 27814.0 * t * t - 22569.18 * t * t * t + 6838.66 * t * t * t * t))));
-
-  return `rgb(${r},${g},${b})`;
+  const t = clamp(intensity, 0, 1);
+  const r = Math.floor(clamp(34.61 + t * (1172.33 - 10793.56 * t + 33300.12 * t * t - 38774.16 * t * t * t + 16211.12 * t * t * t * t), 0, 255));
+  const g = Math.floor(clamp(23.31 + t * (557.33 + 1225.33 * t - 3574.96 * t * t + 1073.77 * t * t * t), 0, 255));
+  const b = Math.floor(clamp(27.2 + t * (3211.1 - 15327.97 * t + 27814.0 * t * t - 22569.18 * t * t * t + 6838.66 * t * t * t * t), 0, 255));
+  return `rgb(${r}, ${g}, ${b})`;
 }
