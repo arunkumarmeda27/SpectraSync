@@ -22,7 +22,11 @@ class ValidationResult:
 class FileValidator:
     """Validates raw .IQ and .WAV recording integrity, formats, and headers."""
 
-    SUPPORTED_EXTENSIONS = {".iq", ".wav", ".bin", ".raw", ".sigmf-data", ".sigmf"}
+    SUPPORTED_EXTENSIONS = {
+        ".iq", ".wav", ".bin", ".raw", ".sigmf-data", ".sigmf",
+        ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".oga", ".opus"
+    }
+    AUDIO_EXTENSIONS = {".mp3", ".m4a", ".aac", ".flac", ".ogg", ".oga", ".opus", ".wav"}
     MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB default safe limit
     MIN_FILE_SIZE = 64  # Needs at least a few samples or header
 
@@ -68,10 +72,40 @@ class FileValidator:
                 detected_format="unsupported",
                 file_size_bytes=file_size,
                 error_message=f"Unsupported file extension '{suffix}'.",
-                suggested_action=f"Provide a file with one of the supported extensions: {', '.join(cls.SUPPORTED_EXTENSIONS)}"
+                suggested_action=f"Provide a file with one of the supported extensions: {', '.join(sorted(cls.SUPPORTED_EXTENSIONS))}"
             )
 
         warnings: List[str] = []
+
+        if suffix in cls.AUDIO_EXTENSIONS:
+            detected = "audio" if suffix != ".wav" else "wav"
+            if suffix == ".wav":
+                try:
+                    with open(path, "rb") as f:
+                        header = f.read(12)
+                    if len(header) < 12 or header[0:4] != b"RIFF" or header[8:12] != b"WAVE":
+                        return ValidationResult(
+                            is_valid=False,
+                            detected_format="corrupt_wav",
+                            file_size_bytes=file_size,
+                            error_message="Malformed WAV file: Missing 'RIFF' or 'WAVE' container marker.",
+                            suggested_action="Check that the file is a standard RIFF WAV container or rename to .iq if it is raw binary."
+                        )
+                    detected = "wav"
+                except Exception as e:
+                    return ValidationResult(
+                        is_valid=False,
+                        detected_format="unreadable",
+                        file_size_bytes=file_size,
+                        error_message=f"Error reading WAV header: {str(e)}",
+                        suggested_action="Verify disk permissions and file health."
+                    )
+            return ValidationResult(
+                is_valid=True,
+                detected_format=detected,
+                file_size_bytes=file_size,
+                warnings=warnings
+            )
 
         # Validate WAV RIFF header if .wav
         if suffix == ".wav":

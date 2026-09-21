@@ -27,13 +27,20 @@ class HeaderDetector:
     def scan_headers(
         cls,
         bits: List[int],
-        max_errors: int = 1
+        max_errors: int = 1,
+        max_scan_bits: int = 65536,
+        max_matches_per_header: int = 32
     ) -> List[Dict[str, Any]]:
         """Scan bit stream for all known standard headers and frame markers."""
         detected = []
+        scan_bits = bits[:max_scan_bits]
 
         for name, pattern in cls.KNOWN_PREAMBLES.items():
-            matches = PatternSearcher.search_pattern(bits, pattern, max_errors=max_errors)
+            matches = PatternSearcher.search_pattern(
+                scan_bits,
+                pattern,
+                max_errors=max_errors
+            )[:max_matches_per_header]
             for m in matches:
                 detected.append({
                     "header_type": name,

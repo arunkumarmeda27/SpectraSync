@@ -114,7 +114,7 @@ const JobQueue: React.FC = () => {
                   <td>
                     <div>
                       <div style={{ fontWeight: 500, fontSize: '0.85rem', maxWidth: 200 }} className="truncate">
-                        {job.signal_file?.original_filename ?? `file_${job.signal_file_id}`}
+                        {job.signal_file?.filename ?? `file_${job.signal_file_id}`}
                       </div>
                       {job.signal_file?.size && (
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>

@@ -6,7 +6,7 @@ import { uploadFile, createJob, type SignalFile } from '../api';
 import { useStore } from '../store';
 import { ProgressBar, fmtSize, Spinner } from '../components/Shared';
 
-const ACCEPTED_EXTS = ['.iq', '.wav', '.complex', '.bin', '.dat'];
+const ACCEPTED_EXTS = ['.iq', '.wav', '.mp3', '.m4a', '.aac', '.flac', '.ogg', '.opus', '.complex', '.bin', '.dat'];
 
 const UploadPage: React.FC = () => {
   const navigate = useNavigate();
@@ -54,7 +54,12 @@ const UploadPage: React.FC = () => {
     try {
       const sf = await uploadFile(selectedFile, p => setUploadProgress(p));
       setUploadedFile(sf);
-      addToast('success', `Uploaded: ${sf.original_filename}`);
+      addToast('success', `Uploaded: ${sf.filename}. Starting analysis...`);
+
+      const job = await createJob(sf.id, config);
+      setActiveJobId(job.id);
+      addToast('success', `Analysis job #${job.id} started`);
+      navigate(`/results/${job.id}`);
     } catch (err: unknown) {
       addToast('error', err instanceof Error ? err.message : 'Upload failed');
     } finally {
@@ -106,7 +111,7 @@ const UploadPage: React.FC = () => {
           <input
             ref={fileRef}
             type="file"
-            accept=".iq,.wav,.complex,.bin,.dat"
+            accept=".iq,.wav,.mp3,.m4a,.aac,.flac,.ogg,.opus,.complex,.bin,.dat"
             style={{ display: 'none' }}
             onChange={e => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
           />
@@ -173,18 +178,18 @@ const UploadPage: React.FC = () => {
             <CheckCircle size={28} color="#00ff9d" />
             <div>
               <div style={{ fontWeight: 700, color: '#00ff9d' }}>Upload complete!</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{uploadedFile.original_filename}</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{uploadedFile.filename}</div>
             </div>
           </div>
 
           {/* File metadata */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '0.75rem', marginBottom: '1rem' }}>
             {[
-              { label: 'Format', val: uploadedFile.file_format },
+              { label: 'Format', val: uploadedFile.format },
               { label: 'Size', val: fmtSize(uploadedFile.size) },
               { label: 'Sample Rate', val: uploadedFile.sample_rate ? `${(uploadedFile.sample_rate/1e6).toFixed(2)} MHz` : 'auto-detect' },
-              { label: 'Duration', val: uploadedFile.duration_sec ? `${uploadedFile.duration_sec.toFixed(3)}s` : 'TBD' },
-              { label: 'Samples', val: uploadedFile.sample_count?.toLocaleString() ?? 'TBD' },
+              { label: 'Channels', val: uploadedFile.channels ?? 'TBD' },
+              { label: 'Sample Format', val: uploadedFile.sample_format ?? 'TBD' },
               { label: 'Checksum', val: uploadedFile.checksum.slice(0, 10) + '…' },
             ].map(row => (
               <div key={row.label} style={{

@@ -32,18 +32,21 @@ api.interceptors.response.use(
 export interface SignalFile {
   id: number;
   filename: string;
-  original_filename: string;
-  file_format: string;
+  format: string;
   size: number;
   checksum: string;
   sample_rate: number | null;
-  sample_count: number | null;
-  duration_sec: number | null;
-  center_frequency: number | null;
-  bit_depth: number | null;
   channels: number | null;
+  sample_format: string | null;
+  center_frequency: number | null;
   storage_path: string;
   uploaded_at: string;
+}
+
+export interface FileUploadResponse {
+  file: SignalFile;
+  validation_status: string;
+  warnings: string[];
 }
 
 export interface AnalysisJob {
@@ -105,13 +108,13 @@ export interface HealthStatus {
 export const uploadFile = async (file: File, onProgress?: (p: number) => void) => {
   const form = new FormData();
   form.append('file', file);
-  const res = await api.post<SignalFile>('/files/upload', form, {
+  const res = await api.post<FileUploadResponse>('/files/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: e => {
       if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
     },
   });
-  return res.data;
+  return res.data.file;
 };
 
 export const listFiles = async () => (await api.get<SignalFile[]>('/files')).data;

@@ -75,7 +75,7 @@ const ReportsPage: React.FC = () => {
                   <td><span className="font-mono" style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>#{job.id}</span></td>
                   <td>
                     <span className="truncate" style={{ maxWidth: 200, display: 'block', fontSize: '0.85rem' }}>
-                      {job.signal_file?.original_filename || job.signal_file?.filename || `file_${job.signal_file_id}`}
+                      {job.signal_file?.filename || `file_${job.signal_file_id}`}
                     </span>
                   </td>
                   <td><StatusBadge status={job.status} /></td>

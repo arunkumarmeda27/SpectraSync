@@ -71,11 +71,11 @@ const ResultsList: React.FC = () => {
               {/* File info */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600, marginBottom: '0.2rem' }} className="truncate">
-                  {job.signal_file?.original_filename || `Signal File #${job.signal_file_id}`}
+                  {job.signal_file?.filename || `Signal File #${job.signal_file_id}`}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   {fmtDate(job.created_at)}
-                  {job.signal_file?.file_format && ` · ${job.signal_file.file_format.toUpperCase()}`}
+                  {job.signal_file?.format && ` · ${job.signal_file.format.toUpperCase()}`}
                 </div>
               </div>
 

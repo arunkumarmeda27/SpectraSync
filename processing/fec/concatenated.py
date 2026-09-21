@@ -11,9 +11,9 @@ class ConcatenatedCodec:
     """Concatenated coding: Inner Viterbi convolutional + Outer Reed-Solomon."""
 
     @classmethod
-    def decode(cls, channel_bits: List[int]) -> Dict[str, Any]:
+    def decode(cls, channel_bits: List[int], viterbi_result: Dict[str, Any] = None) -> Dict[str, Any]:
         """Decode inner convolutional code, deinterleave, then decode outer Reed-Solomon."""
-        viterbi_res = ViterbiCodec.decode(channel_bits)
+        viterbi_res = viterbi_result or ViterbiCodec.decode(channel_bits)
         decoded_bits = viterbi_res.get("decoded_bits", [])
         if not decoded_bits:
             return {

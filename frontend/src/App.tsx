@@ -18,6 +18,7 @@ import SettingsPage from './pages/SettingsPage';
 import ResultsViewer from './pages/ResultsViewer';
 import ResultsList from './pages/ResultsList';
 import DemosPage from './pages/DemosPage';
+import ModulationAnalysisPage from './pages/ModulationAnalysisPage';
 import HealthPage from './pages/HealthPage';
 import { useStore } from './store';
 import { logoutUser } from './api';
@@ -249,6 +250,7 @@ const AppShell: React.FC = () => {
             <Route path="/results" element={<ResultsList />} />
             <Route path="/results/:jobId" element={<ResultsViewer />} />
             <Route path="/demos" element={<DemosPage />} />
+            <Route path="/modulation" element={<ModulationAnalysisPage />} />
             <Route path="*" element={
               <div style={{
                 textAlign: 'center',

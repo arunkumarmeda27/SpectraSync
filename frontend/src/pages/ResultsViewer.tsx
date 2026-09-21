@@ -19,6 +19,12 @@ import { useStore } from '../store';
 // ─── WebSocket progress hook ──────────────────────────────────────────────────
 function useJobWs(jobId: number, onUpdate: (d: Record<string, unknown>) => void) {
   const ws = useRef<WebSocket | null>(null);
+  const onUpdateRef = useRef(onUpdate);
+
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
+
   useEffect(() => {
     if (!jobId) return;
     try {
@@ -27,14 +33,14 @@ function useJobWs(jobId: number, onUpdate: (d: Record<string, unknown>) => void)
       const sock = new WebSocket(`${protocol}//${host}/ws/jobs/${jobId}`);
       ws.current = sock;
       sock.onmessage = (e) => {
-        try { onUpdate(JSON.parse(e.data)); } catch { /* ignore */ }
+        try { onUpdateRef.current(JSON.parse(e.data)); } catch { /* ignore */ }
       };
       sock.onerror = () => {};
       return () => { sock.close(); };
     } catch {
       // ignore
     }
-  }, [jobId, onUpdate]);
+  }, [jobId]);
 }
 
 // ─── Spectrum chart (fake from FFT magnitude if not present) ──────────────────
@@ -137,6 +143,7 @@ const ResultsViewer: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'spectrum' | 'bitstream' | 'stages' | 'raw'>('overview');
   const [downloadingFormat, setDownloadingFormat] = useState<string | null>(null);
+  const loadingRef = useRef(false);
 
   const handleDownload = async (format: 'pdf' | 'csv' | 'json') => {
     setDownloadingFormat(format);
@@ -152,6 +159,8 @@ const ResultsViewer: React.FC = () => {
   };
 
   const load = async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     try {
       const j = await getJob(id);
       setJob(j);
@@ -168,6 +177,7 @@ const ResultsViewer: React.FC = () => {
       addToast('error', err instanceof Error ? err.message : 'Failed to load job');
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
   };
 
@@ -217,7 +227,7 @@ const ResultsViewer: React.FC = () => {
             Job #{job.id} Results
           </h1>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            {job.signal_file?.original_filename}
+            {job.signal_file?.filename || `file_${job.signal_file_id}`}
           </div>
         </div>
         <StatusBadge status={job.status} />

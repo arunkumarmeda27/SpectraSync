@@ -96,6 +96,16 @@ class MetadataExtractor:
 
         if suffix == ".wav":
             meta = cls.extract_from_wav(path)
+        elif suffix in {".mp3", ".m4a", ".aac", ".flac", ".ogg", ".oga", ".opus"}:
+            meta = {
+                "format": "audio",
+                "channels": 1,
+                "sample_rate": 44_100.0,
+                "bit_depth": 16,
+                "num_samples": max(0, path.stat().st_size // 2) if path.exists() else 0,
+                "duration_seconds": 0.0,
+                "is_stereo_iq": False,
+            }
         else:
             fmt = "sigmf" if (suffix in [".sigmf", ".sigmf-data"] or path.name.endswith(".sigmf-data")) else "iq"
             meta = {

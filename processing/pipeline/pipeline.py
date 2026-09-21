@@ -413,18 +413,23 @@ class DspPipeline:
         st10 = StageResult(stage_name=StageName.FEC)
         self._notify(StageName.FEC, 89, "Testing Viterbi, Reed-Solomon, and Concatenated candidate decoders")
 
+        # FEC decoders are expensive for long captures. Evaluate a bounded prefix
+        # while preserving the complete recovered stream for bitstream inspection.
+        fec_max_bits = int(cfg.get("fec_max_bits", 8192))
+        fec_bits_input = recovered_bits[:max(4, fec_max_bits)]
+
         # 1. Viterbi decoder (K=7, Rate 1/2)
-        viterbi_res = ViterbiCodec.decode(recovered_bits)
+        viterbi_res = ViterbiCodec.decode(fec_bits_input)
 
         # 2. Reed-Solomon algebraic decoder (CCSDS RS(255, 223))
-        rs_bytes = np.packbits(np.array(recovered_bits, dtype=np.uint8)).tobytes()
+        rs_bytes = np.packbits(np.array(fec_bits_input, dtype=np.uint8)).tobytes()
         rs_res = ReedSolomonCodec.decode_stream(rs_bytes, n=255, k=223)
 
         # 3. Concatenated decoder (Viterbi inner + RS outer)
-        concat_res = ConcatenatedCodec.decode(recovered_bits)
+        concat_res = ConcatenatedCodec.decode(fec_bits_input, viterbi_result=viterbi_res)
 
         # 4. LDPC decoder (staged capability)
-        ldpc_res = LdpcCodec.decode(recovered_bits)
+        ldpc_res = LdpcCodec.decode(fec_bits_input)
 
         # Select corrected bitstream candidate with highest confidence
         fec_bits = recovered_bits

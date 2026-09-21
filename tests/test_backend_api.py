@@ -50,6 +50,20 @@ def test_demo_signals_list():
     assert "golden_unknown" in keys
 
 
+def test_upload_common_audio_file():
+    headers = get_auth_token()
+    audio_bytes = b"ID3" + (b"\x00" * 200)
+    resp = client.post(
+        "/api/files/upload",
+        files={"file": ("demo_audio.mp3", audio_bytes, "audio/mpeg")},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["file"]["filename"] == "demo_audio.mp3"
+    assert body["file"]["format"] in {"audio", "mp3"}
+
+
 def test_demo_qpsk_execution():
     headers = get_auth_token()
 

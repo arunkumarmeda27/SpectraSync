@@ -1,24 +1,86 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart2 } from 'lucide-react';
+import { BarChart2, RefreshCw, AlertCircle } from 'lucide-react';
 import {
   TimeDomainWaveform,
   LiveSignalSpectrum,
   WaterfallSpectrogram,
   ConstellationDiagram
 } from '../components/DashboardPlots';
-import { listJobs, type AnalysisJob } from '../api';
+import { listJobs, getAnalysisResult, type AnalysisJob, type AnalysisResult } from '../api';
+import { useStore } from '../store';
 
 const VisualizationsPage: React.FC = () => {
+  const { addToast, activeJobId } = useStore();
   const [jobs, setJobs] = useState<AnalysisJob[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
+  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState<'all' | 'waveform' | 'fft' | 'waterfall' | 'constellation'>('all');
 
+  const loadJobs = async () => {
+    try {
+      const jobsList = await listJobs();
+      const completedJobs = jobsList.filter(j => j.status === 'completed');
+      setJobs(completedJobs);
+
+      // Auto-select active job or most recent completed job
+      if (activeJobId && completedJobs.find(j => j.id === activeJobId)) {
+        setSelectedJobId(activeJobId);
+      } else if (completedJobs.length > 0) {
+        setSelectedJobId(completedJobs[0].id);
+      }
+    } catch (err) {
+      addToast('error', 'Failed to load jobs');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAnalysis = async (jobId: number) => {
+    try {
+      const analysisResult = await getAnalysisResult(jobId);
+      setResult(analysisResult);
+    } catch (err) {
+      addToast('error', 'Failed to load analysis result');
+    }
+  };
+
   useEffect(() => {
-    listJobs().then(j => {
-      setJobs(j);
-      if (j.length > 0) setSelectedJobId(j[0].id);
-    }).catch(() => {});
+    loadJobs();
   }, []);
+
+  useEffect(() => {
+    if (selectedJobId) {
+      loadAnalysis(selectedJobId);
+    }
+  }, [selectedJobId]);
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '2rem' }}>
+        <RefreshCw size={24} className="spin" />
+        <span style={{ color: '#94a3b8' }}>Loading analysis jobs...</span>
+      </div>
+    );
+  }
+
+  if (jobs.length === 0) {
+    return (
+      <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
+        <AlertCircle size={48} style={{ opacity: 0.3, marginBottom: '1rem', color: '#64748b' }} />
+        <p style={{ color: '#64748b', marginBottom: '1rem' }}>No completed analysis jobs found.</p>
+        <p style={{ color: '#475569', fontSize: '0.85rem' }}>
+          Upload a signal file from the <b>Upload & Analyze</b> page to see visualizations here.
+        </p>
+      </div>
+    );
+  }
+
+  const params = (result?.parameters || {}) as Record<string, any>;
+  const visualizations = result?.visualizations || {};
+  const sampleRate = (params.sample_rate as any)?.value || params.sample_rate || 2000000;
+  const snr = (params.snr as any)?.value || params.snr || 0;
+  const modulation = result?.primary_modulation || 'Unknown';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -38,11 +100,10 @@ const VisualizationsPage: React.FC = () => {
             <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Active Signal:</span>
             <select
               className="input-control"
-              style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', width: 'auto' }}
+              style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', width: 'auto', minWidth: '200px' }}
               value={selectedJobId || ''}
               onChange={(e) => setSelectedJobId(Number(e.target.value))}
             >
-              <option value="">satellite_iq_01 (Pre-loaded Golden QPSK)</option>
               {jobs.map(j => (
                 <option key={j.id} value={j.id}>
                   #{j.id} - {j.signal_file?.filename || 'Job'} ({j.status})
@@ -50,6 +111,14 @@ const VisualizationsPage: React.FC = () => {
               ))}
             </select>
           </div>
+
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={loadJobs}
+            title="Refresh jobs list"
+          >
+            <RefreshCw size={14} />
+          </button>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -96,10 +165,10 @@ const VisualizationsPage: React.FC = () => {
                   Baseband complex I/Q instantaneous envelope and phase variations
                 </div>
               </div>
-              <span className="badge badge-blue">Sampling: 2.000 MSps</span>
+              <span className="badge badge-blue">Sampling: {(sampleRate / 1e6).toFixed(3)} MSps</span>
             </div>
             <div style={{ height: activeView === 'waveform' ? 360 : 200, width: '100%' }}>
-              <TimeDomainWaveform />
+              <TimeDomainWaveform data={visualizations.waveform as any} />
             </div>
           </div>
         )}
@@ -116,10 +185,10 @@ const VisualizationsPage: React.FC = () => {
                   Hann-windowed decimated power spectrum with carrier peak detection
                 </div>
               </div>
-              <span className="badge badge-high">SNR: 18.5 dB</span>
+              <span className="badge badge-high">SNR: {snr > 0 ? snr.toFixed(1) : 'N/A'} dB</span>
             </div>
             <div style={{ height: activeView === 'fft' ? 360 : 200, width: '100%' }}>
-              <LiveSignalSpectrum />
+              <LiveSignalSpectrum data={visualizations.fft as any} />
             </div>
           </div>
         )}
@@ -139,7 +208,7 @@ const VisualizationsPage: React.FC = () => {
               <span className="badge badge-neutral">Colormap: Turbo</span>
             </div>
             <div style={{ height: activeView === 'waterfall' ? 360 : 200, width: '100%' }}>
-              <WaterfallSpectrogram />
+              <WaterfallSpectrogram data={visualizations.spectrogram as any} />
             </div>
           </div>
         )}
@@ -156,10 +225,10 @@ const VisualizationsPage: React.FC = () => {
                   Symbol decision planes with carrier and timing synchronization applied
                 </div>
               </div>
-              <span className="badge badge-blue">Modulation: QPSK</span>
+              <span className="badge badge-blue">Modulation: {modulation}</span>
             </div>
             <div style={{ height: activeView === 'constellation' ? 360 : 200, width: '100%' }}>
-              <ConstellationDiagram />
+              <ConstellationDiagram data={visualizations.constellation as any} modulation={modulation} />
             </div>
           </div>
         )}

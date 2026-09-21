@@ -11,6 +11,17 @@ from processing.io.metadata import MetadataExtractor
 from processing.io.validation import FileValidator
 
 
+def _ensure_demo_library_exists(golden_dir: Path) -> None:
+    """Generate the built-in demo signals if the golden library is missing."""
+    golden_dir.mkdir(parents=True, exist_ok=True)
+    if any(golden_dir.iterdir()):
+        return
+
+    from ml.generation.generate_golden_signals import generate_all_golden_signals
+
+    generate_all_golden_signals(golden_dir)
+
+
 class FileService:
     """Manages signal file uploads, storage persistence, and DB records."""
 
@@ -41,7 +52,10 @@ class FileService:
         sample_rate = sample_rate_override or meta.get("sample_rate", 1_000_000.0)
         center_freq = center_frequency_override or meta.get("center_frequency", 0.0)
         channels = meta.get("channels", 2)
-        sample_fmt = "pcm16" if val_res.detected_format == "wav" else "complex64"
+        if val_res.detected_format in {"wav", "audio"}:
+            sample_fmt = "pcm16"
+        else:
+            sample_fmt = "complex64"
 
         # 4. Save to database
         db_file = SignalFile(
@@ -68,6 +82,8 @@ class FileService:
     ) -> SignalFile:
         """Load a pre-generated golden demo file into storage and database."""
         golden_dir = Path("data/golden").resolve()
+        _ensure_demo_library_exists(golden_dir)
+
         candidate = golden_dir / f"{demo_name}.iq"
         if not candidate.is_file():
             candidate = golden_dir / f"{demo_name}.wav"
