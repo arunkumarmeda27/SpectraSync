@@ -101,6 +101,15 @@ def test_demo_qpsk_execution():
     assert "snr" in analysis["parameters"]
     assert len(analysis["stages"]) == 13
 
+    bitstream_resp = client.get(f"/api/jobs/{job_id}/bitstream", headers=headers)
+    assert bitstream_resp.status_code == 200
+    bitstream = bitstream_resp.json()
+    assert bitstream["length"] > 0
+    assert bitstream["symbol_count"] > 0
+    assert bitstream["bits_per_symbol"] == 2
+    assert bitstream["hex_dump"]
+    assert "binary_preview" in bitstream
+
     # Verify report generation
     report_resp = client.post(f"/api/jobs/{job_id}/report?export_format=json", headers=headers)
     assert report_resp.status_code == 200

@@ -129,7 +129,7 @@ def process_analysis_job(payload: Dict[str, Any]) -> None:
             job_id=job.id,
             length=bit_data.get("total_bits", 0),
             correlation_score=results["correlation"].get("correlation_score", 0.0),
-            header_offsets=[h.get("bit_offset") for h in results["headers"]],
+            header_offsets=results["headers"],
             payload_frames=results.get("payloads", []),
             hex_stream=results["demodulation"].get("hex_stream", ""),
             ascii_stream=bit_data.get("ascii_preview", ""),

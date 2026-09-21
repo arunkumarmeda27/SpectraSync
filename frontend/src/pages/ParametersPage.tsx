@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { SlidersHorizontal, ShieldCheck, Download, AlertCircle, RefreshCw } from 'lucide-react';
 import { useStore } from '../store';
 import { listJobs, getAnalysisResult, type AnalysisJob, type AnalysisResult } from '../api';
+import { LiveSignalSpectrum, WaterfallSpectrogram, ConstellationDiagram } from '../components/DashboardPlots';
 
 interface ParameterDetail {
   name: string;
@@ -226,27 +227,53 @@ const ParametersPage: React.FC = () => {
     );
   }
 
+  const params = (result.parameters as any) || {};
+  const visualizations = (result.visualizations as any) || {};
+  const modulation = result.primary_modulation || 'UNKNOWN';
+
+  const formatFreq = (val: any) => typeof val === 'number' ? (val >= 1e6 ? `${(val/1e6).toFixed(3)} MHz` : `${(val/1e3).toFixed(2)} kHz`) : 'N/A';
+  const formatNum = (val: any, suffix: string = '') => typeof val === 'number' ? `${val.toFixed(2)}${suffix}` : 'N/A';
+
+  const ParamCard = ({ title, value, desc, highlight = false }: { title: string, value: string, desc: string, highlight?: boolean }) => (
+    <div style={{
+      background: highlight ? 'linear-gradient(135deg, rgba(37, 99, 235, 0.15) 0%, rgba(0, 229, 255, 0.05) 100%)' : '#0a101f',
+      border: highlight ? '1px solid rgba(37, 99, 235, 0.4)' : '1px solid #1e293b',
+      borderRadius: '8px',
+      padding: '1.25rem',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.75rem'
+    }}>
+      <div style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>{title}</div>
+      <div style={{ fontSize: '1.4rem', fontWeight: 800, color: highlight ? '#38bdf8' : '#f8fafc', fontFamily: 'JetBrains Mono, monospace' }}>{value}</div>
+      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{desc}</div>
+    </div>
+  );
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {/* Top Banner */}
-      <div className="card" style={{ padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="panel-card" style={{ padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <SlidersHorizontal size={20} className="card-title-icon" />
+          <SlidersHorizontal size={20} color="#38bdf8" />
           <div>
-            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a' }}>
-              Signal Parameter Inference & Provenance
+            <div style={{ fontWeight: 800, fontSize: '1.1rem', color: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              SIGNAL PARAMETER RESULTS
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-              Deterministic parameter estimation with rigorous scientific traceability and uncertainty metrics
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'flex', gap: '1rem', marginTop: '0.2rem' }}>
+              <span>Signal: <span style={{ color: '#f1f5f9' }}>{jobs.find(j => j.id === selectedJobId)?.signal_file?.filename || 'Unknown.iq'}</span></span>
+              <span>Analysis ID: <span style={{ color: '#f1f5f9' }}>SIG-{selectedJobId}</span></span>
+              <span>Status: <span style={{ color: '#10b981' }}>Analysis Complete</span></span>
             </div>
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          {/* Job Selector */}
           <select
-            className="input-control"
-            style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', minWidth: '200px' }}
+            style={{ 
+              padding: '0.4rem 0.75rem', fontSize: '0.75rem', minWidth: '200px',
+              background: '#0a101f', border: '1px solid #1e293b', color: '#f8fafc', borderRadius: '4px'
+            }}
             value={selectedJobId || ''}
             onChange={(e) => setSelectedJobId(Number(e.target.value))}
           >
@@ -256,154 +283,80 @@ const ParametersPage: React.FC = () => {
               </option>
             ))}
           </select>
-
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={loadJobs}
-            title="Refresh jobs list"
-          >
+          <button className="btn-icon-xs" onClick={loadJobs} title="Refresh jobs list" style={{ padding: '0.5rem' }}>
             <RefreshCw size={14} />
           </button>
-
-          <button
-            className="btn btn-outline btn-sm"
-            onClick={handleExportCsv}
-            style={{ gap: '0.4rem' }}
-          >
-            <Download size={14} />
-            Export Parameters (CSV)
+          <button className="btn-workstation-secondary" onClick={handleExportCsv} style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem' }}>
+            <Download size={14} style={{ marginRight: '0.25rem' }} /> Export CSV
           </button>
         </div>
       </div>
 
-      {/* Main Grid: Parameters Table (Left) + Provenance Deep-Dive (Right) */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '1.25rem' }}>
+      {/* SIGNAL OVERVIEW */}
+      <div>
+        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f1f5f9', marginBottom: '0.75rem', paddingLeft: '0.25rem' }}>SIGNAL OVERVIEW</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
+          <ParamCard title="Sample Rate" value={formatFreq(params.sample_rate?.value)} desc="Sampling frequency (fs)" />
+          <ParamCard title="Center Freq" value={formatFreq(params.carrier_frequency?.value)} desc="Estimated carrier (fc)" />
+          <ParamCard title="Bandwidth" value={formatFreq(params.bandwidth?.value)} desc="Occupied Bandwidth (99%)" />
+          <ParamCard title="Duration" value={formatNum(params.duration?.value, ' s')} desc="Capture duration" />
+          <ParamCard title="Sample Count" value={params.sample_count?.value ? params.sample_count.value.toLocaleString() : 'N/A'} desc="Total IQ pairs" />
+        </div>
+      </div>
 
-        {/* Table of Parameters */}
-        <div className="card" style={{ padding: '1.25rem' }}>
-          <div className="card-title" style={{ marginBottom: '1rem' }}>
-            Inferred Signal Metrics
+      {/* SIGNAL QUALITY */}
+      <div>
+        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f1f5f9', marginBottom: '0.75rem', paddingLeft: '0.25rem' }}>SIGNAL QUALITY</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+          <ParamCard title="SNR" value={formatNum(params.snr?.value, ' dB')} desc="Signal-to-Noise Ratio" highlight={true} />
+          <ParamCard title="Signal Power" value={formatNum(params.signal_power?.value, ' dB')} desc="Average signal power" />
+          <ParamCard title="Noise Power" value={formatNum(params.noise_power?.value, ' dB')} desc="Estimated noise floor" />
+          <ParamCard title="Peak Amplitude" value={formatNum(params.peak_amplitude?.value)} desc="Maximum magnitude" />
+        </div>
+      </div>
+
+      {/* MODULATION / DIGITAL PARAMETERS */}
+      <div>
+        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f1f5f9', marginBottom: '0.75rem', paddingLeft: '0.25rem' }}>MODULATION / DIGITAL PARAMETERS</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+          <ParamCard title="Modulation" value={modulation} desc="Detected scheme" highlight={true} />
+          <ParamCard title="Confidence" value={result.confidence ? `${Math.round(result.confidence * 100)}%` : 'N/A'} desc="Classifier confidence" />
+          <ParamCard title="Symbol Rate" value={formatFreq(params.symbol_rate?.value)} desc="Baud rate (Rs)" />
+          <ParamCard title="Bits/Symbol" value={modulation === 'BPSK' ? '1' : modulation === 'QPSK' ? '2' : modulation === '8PSK' ? '3' : modulation === '16QAM' ? '4' : 'N/A'} desc="Modulation order" />
+        </div>
+      </div>
+
+      {/* VISUAL ANALYSIS */}
+      <div>
+        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f1f5f9', marginBottom: '0.75rem', paddingLeft: '0.25rem' }}>VISUAL ANALYSIS</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', height: '300px' }}>
+          <div className="panel-card" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="panel-header">
+              <div className="panel-title">Spectrum</div>
+            </div>
+            <div style={{ flex: 1, position: 'relative' }}>
+              <LiveSignalSpectrum data={visualizations.fft || null} />
+            </div>
           </div>
-
-          <div className="table-container">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Parameter</th>
-                  <th>Value</th>
-                  <th>Confidence</th>
-                  <th>Source</th>
-                  <th>Uncertainty</th>
-                </tr>
-              </thead>
-              <tbody>
-                {parameterData.map((p) => {
-                  const isSelected = selectedParam?.name === p.name;
-                  return (
-                    <tr
-                      key={p.name}
-                      onClick={() => setSelectedParam(p)}
-                      style={{
-                        cursor: 'pointer',
-                        background: isSelected ? '#f0f7ff' : undefined,
-                        borderLeft: isSelected ? '3px solid #2563eb' : '3px solid transparent'
-                      }}
-                    >
-                      <td style={{ fontWeight: 600, color: isSelected ? '#1d4ed8' : '#0f172a' }}>
-                        {p.name}
-                      </td>
-                      <td className="font-mono" style={{ fontWeight: 600 }}>
-                        {p.value} <span style={{ fontSize: '0.72rem', color: '#64748b' }}>{p.unit}</span>
-                      </td>
-                      <td>
-                        <span className={`badge ${p.confidenceLabel === 'High' ? 'badge-high' : p.confidenceLabel === 'Medium' ? 'badge-medium' : 'badge-low'}`}>
-                          {p.confidenceLabel} ({p.confidence.toFixed(2)})
-                        </span>
-                      </td>
-                      <td style={{ color: '#475569' }}>{p.source}</td>
-                      <td className="font-mono" style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        {p.uncertainty}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="panel-card" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="panel-header">
+              <div className="panel-title">Waterfall</div>
+            </div>
+            <div style={{ flex: 1, position: 'relative' }}>
+              <WaterfallSpectrogram data={visualizations.spectrogram || null} />
+            </div>
+          </div>
+          <div className="panel-card" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="panel-header">
+              <div className="panel-title">Constellation</div>
+            </div>
+            <div style={{ flex: 1, position: 'relative' }}>
+              <ConstellationDiagram data={visualizations.constellation || null} modulation={modulation !== 'UNKNOWN' ? modulation : undefined} />
+            </div>
           </div>
         </div>
-
-        {/* Provenance Detail Drawer */}
-        {selectedParam && (
-          <div className="card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
-              <div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Mathematical Provenance
-                </div>
-                <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f172a' }}>
-                  {selectedParam.name}
-                </div>
-              </div>
-              <span className={`badge ${selectedParam.confidenceLabel === 'High' ? 'badge-high' : selectedParam.confidenceLabel === 'Medium' ? 'badge-medium' : 'badge-low'}`}>
-                Confidence: {Math.round(selectedParam.confidence * 100)}%
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.8rem' }}>
-              <div style={{ background: '#f8fafc', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '0.2rem' }}>
-                  Inferred Value
-                </div>
-                <div className="font-mono" style={{ fontSize: '1.2rem', fontWeight: 700, color: '#2563eb' }}>
-                  {selectedParam.value} <span style={{ fontSize: '0.85rem', color: '#475569' }}>{selectedParam.unit}</span>
-                </div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.15rem' }}>
-                  Estimated Margin of Uncertainty: <b>{selectedParam.uncertainty}</b>
-                </div>
-              </div>
-
-              <div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '0.2rem' }}>
-                  Algorithmic Method
-                </div>
-                <div style={{ fontWeight: 600, color: '#0f172a' }}>
-                  {selectedParam.method}
-                </div>
-              </div>
-
-              <div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '0.2rem' }}>
-                  Physical Consistency Check
-                </div>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  color: '#15803d',
-                  background: '#dcfce7',
-                  padding: '0.4rem 0.6rem',
-                  borderRadius: '6px',
-                  fontSize: '0.75rem',
-                  fontWeight: 600
-                }}>
-                  <ShieldCheck size={16} />
-                  {selectedParam.physicalCheck}
-                </div>
-              </div>
-
-              <div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '0.2rem' }}>
-                  Analyst Notes
-                </div>
-                <div style={{ color: '#475569', fontSize: '0.78rem', lineHeight: 1.5 }}>
-                  {selectedParam.notes}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
       </div>
+
     </div>
   );
 };

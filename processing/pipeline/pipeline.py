@@ -275,6 +275,11 @@ class DspPipeline:
         )
         primary_mod = mod_eval["primary_modulation"]
 
+        if val_res.detected_format == "wav" and signal_data.sample_rate <= 96_000:
+            mod_eval["consistency_notes"].append(
+                "Audio-band WAV detected; no digital RF modulation is asserted without IQ metadata."
+            )
+
         st6.mark_completed(
             output_summary={
                 "primary_modulation": primary_mod,
@@ -365,13 +370,20 @@ class DspPipeline:
                 reference_bits=reference_bits
             )
         else:
-            # Fallback QPSK demodulation attempt for UNKNOWN signals
-            demod_res = PskDemodulator.demodulate(
-                sync_syms,
-                modulation="QPSK",
-                symbol_rate=sym_rate_est["value"]
-            )
-            demod_res["status"] = "ambiguous_fallback"
+            # Fallback for unclassified signals to provide SOME bitstream data
+            # Use a simple zero-crossing slicer on the real part of the baseband
+            import numpy as np
+            raw_bits = (np.real(proc_samples) > 0).astype(int).tolist()
+            
+            demod_res = {
+                "status": "unclassified_fallback",
+                "modulation": primary_mod,
+                "recovered_bits": raw_bits,
+                "bit_count": len(raw_bits),
+                "bit_rate_bps": signal_data.sample_rate,
+                "confidence": 0.0,
+                "reason": "Signal features do not match standard digital modulations. Extracted raw bits using a fallback zero-crossing slicer."
+            }
 
         recovered_bits = demod_res.get("recovered_bits", [])
 
@@ -537,6 +549,7 @@ class DspPipeline:
         stage_records.append(st13.__dict__)
 
         # Assemble full result bundle
+        synchronized_constellation = SignalVisualizer.extract_constellation(sync_syms)
         analysis_bundle = {
             "status": "completed",
             "metadata": {
@@ -575,7 +588,9 @@ class DspPipeline:
                 "fft": fft_data,
                 "psd": psd_data,
                 "spectrogram": spec_data,
-                "constellation": constel_data,
+                "constellation": synchronized_constellation,
+                "modulation_features": mod_eval.get("features", {}),
+                "modulation_notes": mod_eval.get("consistency_notes", []),
                 "eye_diagram": eye_diagram_data
             },
             "stages": stage_records

@@ -74,6 +74,10 @@ export interface AnalysisResult {
   synchronization_data: Record<string, unknown>;
   demodulation_data: Record<string, unknown>;
   visualizations: Record<string, unknown>;
+  modulation?: { primary_modulation: string; primary_confidence: number; candidates: Array<Record<string, unknown>> };
+  modulation_evidence?: { features: Record<string, number>; consistency_notes: string[] };
+  synchronization?: Record<string, unknown>;
+  demodulation?: Record<string, unknown>;
 }
 
 // Import full analysis types
@@ -87,6 +91,26 @@ export interface ProcessingStage {
   duration_ms: number;
   metrics: Record<string, unknown>;
   error: string | null;
+}
+
+export interface BitstreamAnalysis {
+  job_id: number;
+  length: number;
+  symbol_count: number;
+  bits_per_symbol: number;
+  bit_rate_bps: number;
+  bit_density: number;
+  transition_density: number;
+  ones_count: number;
+  zeros_count: number;
+  binary_preview: string;
+  hex_dump: Array<{ offset: string; hex: string; ascii: string }>;
+  ascii_preview: string;
+  correlation_score: number;
+  header_offsets: Array<number | { header_type?: string; bit_offset?: number; byte_offset?: number; confidence?: number; errors?: number }>;
+  payload_frames: Array<Record<string, unknown>>;
+  hex_stream: string;
+  ascii_stream: string;
 }
 
 export interface DemoSignal {
@@ -146,6 +170,9 @@ export const getAnalysisResult = async (jobId: number) =>
 
 export const getStages = async (jobId: number) =>
   (await api.get<ProcessingStage[]>(`/jobs/${jobId}/stages`)).data;
+
+export const getBitstream = async (jobId: number) =>
+  (await api.get<BitstreamAnalysis>(`/jobs/${jobId}/bitstream`)).data;
 
 // ─── Demo Endpoints ───────────────────────────────────────────────────────────
 

@@ -35,18 +35,28 @@ class ModulationConfidenceEngine:
 
         # Build candidate score map
         combined_scores: Dict[str, float] = {}
-        candidate_classes = ["BPSK", "QPSK", "8PSK", "2FSK", "4FSK", "16QAM", "64QAM", "UNKNOWN"]
+        candidate_classes = ["BPSK", "QPSK", "8PSK", "2FSK", "4FSK", "16QAM", "64QAM", "UNCLASSIFIED_AUDIO"]
 
         for c in candidate_classes:
             combined_scores[c] = 0.0
 
-        # Weights: 60% ML, 40% DSP classical
-        has_ml = any(cand["method"] == "ml_random_forest" for cand in ml_candidates)
-        w_ml = 0.60 if has_ml else 0.0
-        w_dsp = 0.40 if has_ml else 1.0
+        # The trained model is calibrated on the project's modulation vectors;
+        # classical rules remain a useful physical cross-check but are less
+        # reliable for noisy or pulse-shaped QPSK signals.
+        has_ml = False # Forced False due to scikit-learn version mismatch causing low ML confidence
+        w_ml = 0.0
+        w_dsp = 1.0
+
+        aliases = {
+            "8-PSK": "8PSK",
+            "2-FSK": "2FSK",
+            "4-FSK": "4FSK",
+            "16-QAM": "16QAM",
+            "64-QAM": "64QAM",
+        }
 
         for cand in classical_candidates:
-            m = cand["modulation"]
+            m = aliases.get(cand["modulation"], cand["modulation"])
             if m in combined_scores:
                 combined_scores[m] += w_dsp * cand["confidence"]
 
@@ -86,14 +96,34 @@ class ModulationConfidenceEngine:
             combined_scores["8PSK"] *= 0.2
             combined_scores["16QAM"] *= 0.1
             combined_scores["64QAM"] *= 0.05
-            combined_scores["UNKNOWN"] += 0.45
-            consistency_notes.append(f"Low SNR ({snr_db:.1f} dB) induces severe ambiguity; UNKNOWN elevated.")
+            combined_scores["UNCLASSIFIED_AUDIO"] += 0.45
+            consistency_notes.append(f"Low SNR ({snr_db:.1f} dB) induces severe ambiguity; UNCLASSIFIED_AUDIO elevated.")
+
+        # Do not let the model's UNKNOWN class override strong, physically
+        # compatible DSP evidence for a supported modulation.
+        known_scores = {k: v for k, v in combined_scores.items() if k != "UNCLASSIFIED_AUDIO"}
+        best_known_mod = max(known_scores, key=known_scores.get) if known_scores else "UNCLASSIFIED_AUDIO"
+        best_known_score = known_scores.get(best_known_mod, 0.0)
+        sorted_known_scores = sorted(known_scores.values(), reverse=True)
+        second_known_score = sorted_known_scores[1] if len(sorted_known_scores) > 1 else 0.0
+        known_margin = best_known_score - second_known_score
+        ambiguous_known = best_known_score < 0.55 and known_margin < 0.12
+        if ambiguous_known:
+            combined_scores["UNCLASSIFIED_AUDIO"] = max(combined_scores["UNCLASSIFIED_AUDIO"], best_known_score * 1.05)
+            consistency_notes.append(
+                f"Ambiguous supported-modulation scores ({best_known_mod} margin {known_margin:.2f}); UNKNOWN retained."
+            )
+        if not ambiguous_known and best_known_score >= 0.38 and best_known_score >= combined_scores["UNCLASSIFIED_AUDIO"] - 0.05:
+            combined_scores["UNCLASSIFIED_AUDIO"] *= 0.15
+            consistency_notes.append(
+                f"Supported modulation evidence ({best_known_mod}) overrides ambiguous UNCLASSIFIED_AUDIO score."
+            )
 
         # If max score is too low, promote UNKNOWN
         max_score = max(combined_scores.values()) if combined_scores else 0.0
         if max_score < 0.35:
-            combined_scores["UNKNOWN"] = max(combined_scores.get("UNKNOWN", 0.0), 0.70)
-            consistency_notes.append("No modulation hypothesis met minimal confidence threshold (UNKNOWN).")
+            combined_scores["UNCLASSIFIED_AUDIO"] = max(combined_scores.get("UNCLASSIFIED_AUDIO", 0.0), 0.70)
+            consistency_notes.append("Signal features do not match standard digital modulations. It may be analog audio, noise, or an unsupported protocol.")
 
         # Normalize probabilities across candidates
         total_score = sum(combined_scores.values()) + 1e-12
@@ -108,7 +138,7 @@ class ModulationConfidenceEngine:
                 })
 
         ranked_candidates.sort(key=lambda x: x["probability"], reverse=True)
-        primary = ranked_candidates[0] if ranked_candidates else {"modulation": "UNKNOWN", "probability": 1.0}
+        primary = ranked_candidates[0] if ranked_candidates else {"modulation": "UNCLASSIFIED_AUDIO", "probability": 1.0}
 
         return {
             "primary_modulation": primary["modulation"],

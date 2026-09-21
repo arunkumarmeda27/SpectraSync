@@ -10,6 +10,7 @@ from backend.app.models.analysis_job import AnalysisJob
 from backend.app.models.analysis_result import AnalysisResult
 from backend.app.models.artifact import Artifact
 from backend.app.models.bitstream import Bitstream
+from processing.bitstream.extraction import BitStreamExtractor
 
 router = APIRouter(prefix="/jobs/{job_id}", tags=["analysis"], dependencies=[Depends(get_current_user)])
 
@@ -52,6 +53,10 @@ def get_full_analysis(job_id: int, db: Session = Depends(get_db)):
             "primary_modulation": res.primary_modulation,
             "primary_confidence": res.confidence,
             "candidates": res.modulation_candidates
+        },
+        "modulation_evidence": {
+            "features": (res.visualizations or {}).get("modulation_features", {}),
+            "consistency_notes": (res.visualizations or {}).get("modulation_notes", [])
         },
         "synchronization": res.synchronization_data,
         "demodulation": res.demodulation_data,
@@ -144,10 +149,21 @@ def get_bitstream(job_id: int, db: Session = Depends(get_db)):
     if not job.bitstream:
         raise HTTPException(status_code=400, detail="Bit stream not yet available")
     bs = job.bitstream
+    recovered_bits = (job.result.demodulation_data or {}).get("recovered_bits", []) if job.result else []
+    views = BitStreamExtractor.format_views(recovered_bits)
     return {
         "job_id": job.id,
         "length": bs.length,
+        "symbol_count": (job.result.demodulation_data or {}).get("symbol_count", 0) if job.result else 0,
+        "bits_per_symbol": (job.result.demodulation_data or {}).get("bits_per_symbol", 0) if job.result else 0,
+        "bit_rate_bps": (job.result.demodulation_data or {}).get("bit_rate_bps", 0) if job.result else 0,
         "bit_density": bs.bit_density,
+        "transition_density": views.get("transition_density", 0.0),
+        "ones_count": views.get("ones_count", 0),
+        "zeros_count": views.get("zeros_count", 0),
+        "binary_preview": views.get("binary_preview", ""),
+        "hex_dump": views.get("hex_dump", []),
+        "ascii_preview": views.get("ascii_preview", ""),
         "correlation_score": bs.correlation_score,
         "header_offsets": bs.header_offsets,
         "payload_frames": bs.payload_frames,

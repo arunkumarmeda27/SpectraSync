@@ -43,6 +43,7 @@ const Dashboard: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [jobs, setJobs] = useState<AnalysisJob[]>([]);
+  const [completedResults, setCompletedResults] = useState<Record<number, FullAnalysisResult>>({});
   const [selectedJobId, setSelectedJobId] = useState<number | null>(activeJobId ?? null);
   const [analysisData, setAnalysisData] = useState<FullAnalysisResult | null>(null);
   const [stages, setStages] = useState<ProcessingStage[]>([]);
@@ -58,6 +59,18 @@ const Dashboard: React.FC = () => {
     listJobs()
       .then(jobList => {
         setJobs(jobList);
+        const completedJobs = jobList.filter(job => job.status === 'completed');
+        Promise.all(
+          completedJobs.map(async job => {
+            try {
+              return [job.id, await getAnalysisResult(job.id) as unknown as FullAnalysisResult] as const;
+            } catch {
+              return null;
+            }
+          })
+        ).then(entries => {
+          setCompletedResults(Object.fromEntries(entries.filter((entry): entry is [number, FullAnalysisResult] => entry !== null)));
+        });
         const preferred = activeJobId
           ? jobList.find(j => j.id === activeJobId) ?? jobList.find(j => j.status === 'completed' && j.result) ?? jobList[0]
           : jobList.find(j => j.status === 'completed' && j.result) ?? jobList[0];
@@ -93,14 +106,14 @@ const Dashboard: React.FC = () => {
 
   const calculateKPIs = () => {
     const totalAnalyses = jobs.length;
-    const completedJobs = jobs.filter(j => j.status === 'completed' || j.status === 'failed');
-    const successfulJobs = jobs.filter(j => j.status === 'completed' && !!j.result);
-    const successRate = completedJobs.length > 0 ? Math.round((successfulJobs.length / completedJobs.length) * 100) : 0;
+    const finishedJobs = jobs.filter(j => j.status === 'completed' || j.status === 'failed');
+    const successfulJobs = jobs.filter(j => j.status === 'completed');
+    const successRate = finishedJobs.length > 0 ? Math.round((successfulJobs.length / finishedJobs.length) * 100) : 0;
 
     let totalSNR = 0;
     let snrCount = 0;
     successfulJobs.forEach(job => {
-      const snr = (job.result as any)?.parameters?.snr?.value;
+      const snr = completedResults[job.id]?.parameters?.snr?.value;
       if (typeof snr === 'number' && !Number.isNaN(snr)) {
         totalSNR += snr;
         snrCount += 1;
@@ -112,7 +125,7 @@ const Dashboard: React.FC = () => {
     jobs.forEach(job => {
       if (typeof job.signal_file?.size === 'number') totalBytes += job.signal_file.size;
     });
-    const totalGB = totalBytes > 0 ? (totalBytes / (1024 * 1024 * 1024)).toFixed(1) : '—';
+    const totalGB = totalBytes > 0 ? (totalBytes / (1024 * 1024 * 1024)).toFixed(2) : '—';
 
     return { totalAnalyses, successRate, avgSNR, totalGB };
   };
@@ -824,65 +837,68 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Card 4: Live Analysis Log */}
+        {/* Card 4: Recent Analyzed Audios */}
         <div className="panel-card" style={{ height: '240px' }}>
           <div className="panel-header">
             <div className="panel-title">
               <Activity size={14} />
-              <span>Analysis Status</span>
+              <span>Recent Analyzed Audios</span>
             </div>
           </div>
           <div style={{
             flex: 1,
-            padding: '0.75rem',
+            padding: '0.5rem',
             overflowY: 'auto',
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '0.72rem',
             display: 'flex',
             flexDirection: 'column',
             gap: '0.5rem'
           }}>
-            {currentJob ? (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <div style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: currentJob.status === 'completed' ? '#10b981' : currentJob.status === 'processing' || currentJob.status === 'validating' ? '#3b82f6' : currentJob.status === 'failed' ? '#ef4444' : '#64748b'
-                  }} />
-                  <span style={{ color: '#f1f5f9', fontWeight: 600 }}>Job #{currentJob.id}</span>
+            {jobs.length > 0 ? (
+              jobs.slice(0, 5).map(job => (
+                <div
+                  key={job.id}
+                  onClick={() => setSelectedJobId(job.id)}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    padding: '0.5rem 0.75rem',
+                    background: job.id === selectedJobId ? 'rgba(59, 130, 246, 0.15)' : 'rgba(10, 17, 34, 0.6)',
+                    border: job.id === selectedJobId ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid #162445',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#f8fafc' }}>
+                      {job.signal_file?.filename || `Job #${job.id}`}
+                    </span>
+                    <span style={{ fontSize: '0.65rem', color: job.status === 'completed' ? '#10b981' : job.status === 'failed' ? '#ef4444' : '#3b82f6', fontWeight: 700 }}>
+                      {job.status === 'completed' ? 'Completed' : job.status === 'failed' ? 'Failed' : 'Processing'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.7rem', color: '#94a3b8' }}>
+                    <span>{job.signal_file?.format ? `${job.signal_file.format.toUpperCase()} Signal` : 'Signal'}</span>
+                    <span>
+                      {job.result?.primary_modulation && (
+                        <span style={{ color: '#38bdf8', fontWeight: 600, marginRight: '0.5rem' }}>{job.result.primary_modulation}</span>
+                      )}
+                      {job.created_at ? new Date(job.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
+                    </span>
+                  </div>
                 </div>
-                <div style={{ color: '#94a3b8', fontSize: '0.7rem', paddingLeft: '1rem' }}>
-                  File: {currentJob.signal_file?.filename || 'Unknown'}
-                </div>
-                <div style={{ color: '#94a3b8', fontSize: '0.7rem', paddingLeft: '1rem' }}>
-                  Status: {currentJob.status}
-                </div>
-                {(currentJob.status === 'processing' || currentJob.status === 'validating') && (
-                  <div style={{ color: '#3b82f6', fontSize: '0.7rem', paddingLeft: '1rem' }}>
-                    Progress: {currentJob.progress ?? 0}%
-                  </div>
-                )}
-                {currentJob.status === 'completed' && currentJob.completed_at && (
-                  <div style={{ color: '#10b981', fontSize: '0.7rem', paddingLeft: '1rem' }}>
-                    Completed: {new Date(currentJob.completed_at).toLocaleString()}
-                  </div>
-                )}
-                {currentJob.error && (
-                  <div style={{ color: '#ef4444', fontSize: '0.7rem', paddingLeft: '1rem' }}>
-                    Error: {currentJob.error}
-                  </div>
-                )}
-                {!currentJob.error && !currentJob.completed_at && currentJob.status !== 'processing' && currentJob.status !== 'validating' && (
-                  <div style={{ color: '#94a3b8', fontSize: '0.7rem', paddingLeft: '1rem' }}>
-                    Live processing events unavailable
-                  </div>
-                )}
-              </>
+              ))
             ) : (
-              <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
-                No job selected
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', fontSize: '0.8rem' }}>
+                <p style={{ marginBottom: '0.5rem' }}>No recent analyses</p>
+                <p style={{ fontSize: '0.7rem' }}>Upload an IQ or WAV recording to begin signal analysis.</p>
+                <button
+                  className="btn-workstation-primary"
+                  style={{ marginTop: '1rem' }}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Upload File
+                </button>
               </div>
             )}
           </div>

@@ -19,21 +19,23 @@ import Sidebar from './components/Sidebar';
 import { ToastContainer } from './components/Shared';
 import ProtectedRoute from './components/ProtectedRoute';
 
-// Pages
-import LoginPage from './pages/LoginPage';
-import Dashboard from './pages/Dashboard';
-import UploadPage from './pages/UploadPage';
-import JobQueue from './pages/JobQueue';
-import SignalLabPage from './pages/SignalLabPage';
-import ParametersPage from './pages/ParametersPage';
-import BitstreamPage from './pages/BitstreamPage';
-import ReportsPage from './pages/ReportsPage';
-import SettingsPage from './pages/SettingsPage';
-import ResultsViewer from './pages/ResultsViewer';
-import ResultsList from './pages/ResultsList';
-import DemosPage from './pages/DemosPage';
-import ModulationAnalysisPage from './pages/ModulationAnalysisPage';
-import HealthPage from './pages/HealthPage';
+import { lazy, Suspense } from 'react';
+
+// Lazy Loaded Pages
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const UploadPage = lazy(() => import('./pages/UploadPage'));
+const JobQueue = lazy(() => import('./pages/JobQueue'));
+const SignalLabPage = lazy(() => import('./pages/SignalLabPage'));
+const ParametersPage = lazy(() => import('./pages/ParametersPage'));
+const BitstreamPage = lazy(() => import('./pages/BitstreamPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const ResultsViewer = lazy(() => import('./pages/ResultsViewer'));
+const ResultsList = lazy(() => import('./pages/ResultsList'));
+const DemosPage = lazy(() => import('./pages/DemosPage'));
+const ModulationAnalysisPage = lazy(() => import('./pages/ModulationAnalysisPage'));
+const HealthPage = lazy(() => import('./pages/HealthPage'));
 import { useStore } from './store';
 import { logoutUser, listJobs, type AnalysisJob } from './api';
 import './index.css';
@@ -288,38 +290,40 @@ const AppShell: React.FC = () => {
 
         {/* Page Content */}
         <main className="page-content">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/upload" element={<UploadPage />} />
-            <Route path="/jobs" element={<JobQueue />} />
-            <Route path="/visualizations" element={<SignalLabPage />} />
-            <Route path="/parameters" element={<ParametersPage />} />
-            <Route path="/modulation" element={<ModulationAnalysisPage />} />
-            <Route path="/results" element={<ResultsList />} />
-            <Route path="/results/:jobId" element={<ResultsViewer />} />
-            <Route path="/bitstream" element={<BitstreamPage />} />
-            <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/health" element={<HealthPage />} />
-            <Route path="/demos" element={<DemosPage />} />
-            <Route
-              path="*"
-              element={
-                <div style={{ textAlign: 'center', padding: '5rem 2rem', color: '#64748b' }}>
-                  <div style={{ fontSize: '3rem', fontWeight: 800, color: '#1e3563', marginBottom: '0.5rem' }}>
-                    404
+          <Suspense fallback={<div style={{ padding: '2rem', color: '#64748b' }}>Loading module...</div>}>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/upload" element={<UploadPage />} />
+              <Route path="/jobs" element={<JobQueue />} />
+              <Route path="/visualizations" element={<SignalLabPage />} />
+              <Route path="/parameters" element={<ParametersPage />} />
+              <Route path="/modulation" element={<ModulationAnalysisPage />} />
+              <Route path="/results" element={<ResultsList />} />
+              <Route path="/results/:jobId" element={<ResultsViewer />} />
+              <Route path="/bitstream" element={<BitstreamPage />} />
+              <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/health" element={<HealthPage />} />
+              <Route path="/demos" element={<DemosPage />} />
+              <Route
+                path="*"
+                element={
+                  <div style={{ textAlign: 'center', padding: '5rem 2rem', color: '#64748b' }}>
+                    <div style={{ fontSize: '3rem', fontWeight: 800, color: '#1e3563', marginBottom: '0.5rem' }}>
+                      404
+                    </div>
+                    <h3 style={{ color: '#f1f5f9', marginBottom: '0.5rem' }}>Signal Target Not Found</h3>
+                    <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1.5rem' }}>
+                      The requested route or telemetry view does not exist in this workstation build.
+                    </p>
+                    <button className="btn-workstation-primary" onClick={() => navigate('/')}>
+                      Return to Dashboard
+                    </button>
                   </div>
-                  <h3 style={{ color: '#f1f5f9', marginBottom: '0.5rem' }}>Signal Target Not Found</h3>
-                  <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1.5rem' }}>
-                    The requested route or telemetry view does not exist in this workstation build.
-                  </p>
-                  <button className="btn-workstation-primary" onClick={() => navigate('/')}>
-                    Return to Dashboard
-                  </button>
-                </div>
-              }
-            />
-          </Routes>
+                }
+              />
+            </Routes>
+          </Suspense>
         </main>
       </div>
       <ToastContainer />
