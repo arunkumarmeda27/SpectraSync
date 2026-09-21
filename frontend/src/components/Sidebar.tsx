@@ -4,12 +4,15 @@ import {
   LayoutDashboard,
   Upload,
   Clock,
-  BarChart2,
+  Activity,
   SlidersHorizontal,
+  Radio,
   Binary,
   FileText,
   Settings,
-  Activity
+  Heart,
+  Waves,
+  TrendingUp
 } from 'lucide-react';
 
 interface NavItem {
@@ -18,15 +21,21 @@ interface NavItem {
   path: string;
 }
 
-const navItems: NavItem[] = [
-  { label: 'Dashboard', icon: <LayoutDashboard size={17} />, path: '/' },
-  { label: 'Upload & Analyze', icon: <Upload size={17} />, path: '/upload' },
-  { label: 'Job History', icon: <Clock size={17} />, path: '/jobs' },
-  { label: 'Signal Visualizations', icon: <BarChart2 size={17} />, path: '/visualizations' },
-  { label: 'Parameter Results', icon: <SlidersHorizontal size={17} />, path: '/parameters' },
-  { label: 'Bit Stream Analysis', icon: <Binary size={17} />, path: '/bitstream' },
-  { label: 'Reports', icon: <FileText size={17} />, path: '/reports' },
-  { label: 'Settings', icon: <Settings size={17} />, path: '/settings' },
+const analysisItems: NavItem[] = [
+  { label: 'Dashboard', icon: <LayoutDashboard size={16} />, path: '/' },
+  { label: 'Upload & Analyze', icon: <Upload size={16} />, path: '/upload' },
+  { label: 'Job History', icon: <Clock size={16} />, path: '/jobs' },
+  { label: 'Signal Lab', icon: <Activity size={16} />, path: '/visualizations' },
+  { label: 'Parameter Results', icon: <SlidersHorizontal size={16} />, path: '/parameters' },
+  { label: 'Modulation Analysis', icon: <Radio size={16} />, path: '/demos' },
+  { label: 'Demodulation', icon: <TrendingUp size={16} />, path: '/results' },
+  { label: 'Bit Stream Analysis', icon: <Binary size={16} />, path: '/bitstream' },
+  { label: 'Reports', icon: <FileText size={16} />, path: '/reports' },
+];
+
+const systemItems: NavItem[] = [
+  { label: 'Settings', icon: <Settings size={16} />, path: '/settings' },
+  { label: 'System Health', icon: <Heart size={16} />, path: '/health' },
 ];
 
 const Sidebar: React.FC = () => {
@@ -38,20 +47,38 @@ const Sidebar: React.FC = () => {
       {/* Brand */}
       <div className="sidebar-brand">
         <div className="brand-icon-box">
-          <Activity size={20} />
+          <Waves size={18} />
         </div>
         <div>
           <div className="brand-title">SpectraSync</div>
-          <div className="brand-subtitle">Signal Analysis Platform</div>
+          <div className="brand-subtitle">Signal Intelligence</div>
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="sidebar-nav">
-        {navItems.map((item) => {
+      {/* Navigation - Analysis Section */}
+      <nav className="sidebar-nav" style={{ flex: 1, overflowY: 'auto', paddingBottom: '0.5rem' }}>
+        <div className="sidebar-nav-section-title">Analysis</div>
+        {analysisItems.map((item) => {
           const isActive = item.path === '/'
             ? location.pathname === '/'
             : location.pathname.startsWith(item.path);
+
+          return (
+            <button
+              key={item.path}
+              className={`nav-link ${isActive ? 'active' : ''}`}
+              onClick={() => navigate(item.path)}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+
+        {/* System Section */}
+        <div className="sidebar-nav-section-title" style={{ marginTop: '0.75rem' }}>System</div>
+        {systemItems.map((item) => {
+          const isActive = location.pathname.startsWith(item.path);
 
           return (
             <button
@@ -68,10 +95,20 @@ const Sidebar: React.FC = () => {
 
       {/* Footer */}
       <div className="sidebar-footer">
-        <div>v1.0.0</div>
-        <div className="sidebar-footer-brand">SpectraSync</div>
-        <div style={{ color: '#475569', fontSize: '0.68rem', marginTop: '2px' }}>
-          Built for a smarter spectrum
+        {/* Glowing wave decoration */}
+        <div style={{
+          width: '100%',
+          height: '3px',
+          background: 'linear-gradient(90deg, transparent 0%, #2563eb 50%, transparent 100%)',
+          marginBottom: '0.5rem',
+          borderRadius: '99px',
+          boxShadow: '0 0 8px rgba(37, 99, 235, 0.6)'
+        }} />
+        <div style={{ fontSize: '0.65rem', color: '#64748b', marginBottom: '0.15rem' }}>
+          From Raw Recordings to Meaningful Signal Insights
+        </div>
+        <div style={{ fontSize: '0.7rem', color: '#475569', fontWeight: 600 }}>
+          SIH26147 · v1.0.0
         </div>
       </div>
     </aside>

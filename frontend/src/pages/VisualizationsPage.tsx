@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { BarChart2 } from 'lucide-react';
 import {
   TimeDomainWaveform,
-  FrequencySpectrumPlot,
-  SpectrogramWaterfall,
-  ConstellationPlot
+  LiveSignalSpectrum,
+  WaterfallSpectrogram,
+  ConstellationDiagram
 } from '../components/DashboardPlots';
 import { listJobs, type AnalysisJob } from '../api';
 
@@ -99,7 +99,7 @@ const VisualizationsPage: React.FC = () => {
               <span className="badge badge-blue">Sampling: 2.000 MSps</span>
             </div>
             <div style={{ height: activeView === 'waveform' ? 360 : 200, width: '100%' }}>
-              <TimeDomainWaveform color="#2563eb" />
+              <TimeDomainWaveform />
             </div>
           </div>
         )}
@@ -119,7 +119,7 @@ const VisualizationsPage: React.FC = () => {
               <span className="badge badge-high">SNR: 18.5 dB</span>
             </div>
             <div style={{ height: activeView === 'fft' ? 360 : 200, width: '100%' }}>
-              <FrequencySpectrumPlot color="#2563eb" />
+              <LiveSignalSpectrum />
             </div>
           </div>
         )}
@@ -139,7 +139,7 @@ const VisualizationsPage: React.FC = () => {
               <span className="badge badge-neutral">Colormap: Turbo</span>
             </div>
             <div style={{ height: activeView === 'waterfall' ? 360 : 200, width: '100%' }}>
-              <SpectrogramWaterfall />
+              <WaterfallSpectrogram />
             </div>
           </div>
         )}
@@ -159,7 +159,7 @@ const VisualizationsPage: React.FC = () => {
               <span className="badge badge-blue">Modulation: QPSK</span>
             </div>
             <div style={{ height: activeView === 'constellation' ? 360 : 200, width: '100%' }}>
-              <ConstellationPlot color="#2563eb" />
+              <ConstellationDiagram />
             </div>
           </div>
         )}

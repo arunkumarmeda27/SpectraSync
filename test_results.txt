@@ -1,0 +1,59 @@
+============================= test session starts =============================
+platform win32 -- Python 3.11.7, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\ASUS-TUF\AppData\Local\Programs\Python\Python311\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\ASUS-TUF\SpectraSync
+plugins: anyio-4.13.0, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 33 items
+
+tests/golden_vectors/test_golden_accuracy.py::test_golden_bpsk PASSED    [  3%]
+tests/golden_vectors/test_golden_accuracy.py::test_golden_qpsk PASSED    [  6%]
+tests/golden_vectors/test_golden_accuracy.py::test_golden_2fsk PASSED    [  9%]
+tests/golden_vectors/test_golden_accuracy.py::test_golden_16qam PASSED   [ 12%]
+tests/golden_vectors/test_golden_accuracy.py::test_golden_unknown PASSED [ 15%]
+tests/test_auth.py::test_password_hashing PASSED                         [ 18%]
+tests/test_auth.py::test_unauthenticated_requests_return_401 PASSED      [ 21%]
+tests/test_auth.py::test_invalid_token_returns_401 PASSED                [ 24%]
+tests/test_auth.py::test_login_success_analyst PASSED                    [ 27%]
+tests/test_auth.py::test_login_success_admin PASSED                      [ 30%]
+tests/test_auth.py::test_login_invalid_credentials PASSED                [ 33%]
+tests/test_auth.py::test_me_endpoint_authenticated PASSED                [ 36%]
+tests/test_auth.py::test_logout_endpoint PASSED                          [ 39%]
+tests/test_auth.py::test_user_registration_and_login PASSED              [ 42%]
+tests/test_backend_api.py::test_root_endpoint PASSED                     [ 45%]
+tests/test_backend_api.py::test_health_endpoints PASSED                  [ 48%]
+tests/test_backend_api.py::test_demo_signals_list PASSED                 [ 51%]
+tests/test_backend_api.py::test_demo_qpsk_execution PASSED               [ 54%]
+tests/test_dsp_pipeline.py::test_dc_removal PASSED                       [ 57%]
+tests/test_dsp_pipeline.py::test_normalization PASSED                    [ 60%]
+tests/test_dsp_pipeline.py::test_filtering PASSED                        [ 63%]
+tests/test_dsp_pipeline.py::test_carrier_frequency_estimation PASSED     [ 66%]
+tests/test_dsp_pipeline.py::test_bandwidth_estimation PASSED             [ 69%]
+tests/test_dsp_pipeline.py::test_snr_estimation PASSED                   [ 72%]
+tests/test_dsp_pipeline.py::test_cumulants_feature_extraction PASSED     [ 75%]
+tests/test_dsp_pipeline.py::test_psk_demodulator PASSED                  [ 78%]
+tests/test_dsp_pipeline.py::test_qam_demodulator PASSED                  [ 81%]
+tests/test_dsp_pipeline.py::test_fsk_demodulator PASSED                  [ 84%]
+tests/test_dsp_pipeline.py::test_viterbi_codec PASSED                    [ 87%]
+tests/test_dsp_pipeline.py::test_reed_solomon_codec PASSED               [ 90%]
+tests/test_dsp_pipeline.py::test_bitstream_extractor PASSED              [ 93%]
+tests/test_dsp_pipeline.py::test_header_detection PASSED                 [ 96%]
+tests/test_dsp_pipeline.py::test_cross_correlator PASSED                 [100%]
+
+============================== warnings summary ===============================
+..\AppData\Local\Programs\Python\Python311\Lib\site-packages\fastapi\testclient.py:1
+  C:\Users\ASUS-TUF\AppData\Local\Programs\Python\Python311\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/golden_vectors/test_golden_accuracy.py::test_golden_bpsk
+  C:\Users\ASUS-TUF\AppData\Local\Programs\Python\Python311\Lib\site-packages\sklearn\base.py:525: InconsistentVersionWarning: Trying to unpickle estimator DecisionTreeClassifier from version 1.8.0 when using version 1.9.1. This might lead to breaking code or invalid results. Use at your own risk. For more info please refer to:
+  https://scikit-learn.org/stable/model_persistence.html#security-maintainability-limitations
+    warnings.warn(
+
+tests/golden_vectors/test_golden_accuracy.py::test_golden_bpsk
+  C:\Users\ASUS-TUF\AppData\Local\Programs\Python\Python311\Lib\site-packages\sklearn\base.py:525: InconsistentVersionWarning: Trying to unpickle estimator RandomForestClassifier from version 1.8.0 when using version 1.9.1. This might lead to breaking code or invalid results. Use at your own risk. For more info please refer to:
+  https://scikit-learn.org/stable/model_persistence.html#security-maintainability-limitations
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 33 passed, 3 warnings in 54.66s =======================

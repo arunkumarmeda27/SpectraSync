@@ -1,7 +1,4 @@
-version: "3.8"
-
 services:
-  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: spectrasync_postgres
@@ -11,7 +8,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-spectrasync}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spectrasync_secret}
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -20,7 +17,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Redis Distributed Job Queue
   redis:
     image: redis:7-alpine
     container_name: spectrasync_redis
@@ -35,9 +31,8 @@ services:
       timeout: 5s
       retries: 5
 
-  # MinIO Object Storage (S3-compatible)
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: spectrasync_minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -55,7 +50,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # FastAPI Backend Service
   backend:
     build:
       context: .
@@ -83,7 +77,6 @@ services:
       minio:
         condition: service_healthy
 
-  # Dedicated DSP Processing Worker
   worker:
     build:
       context: .
@@ -109,7 +102,6 @@ services:
       backend:
         condition: service_started
 
-  # Production Frontend Web UI
   frontend:
     build:
       context: .

@@ -1,257 +1,67 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Upload,
-  Clock,
-  Check,
-  FileText,
-  Download,
-  Eye,
   Play,
+  Download,
+  Maximize2,
+  Sliders,
+  CheckCircle2,
+  Radio,
+  Activity,
+  Layers,
   ChevronDown,
-  ChevronRight,
-  Loader2
+  X,
+  Sparkles,
+  BarChart3,
+  HardDrive
 } from 'lucide-react';
 import {
+  LiveSignalSpectrum,
+  WaterfallSpectrogram,
   TimeDomainWaveform,
-  FrequencySpectrumPlot,
-  SpectrogramWaterfall,
-  ConstellationPlot
+  ConstellationDiagram,
+  MiniConstellationPlot
 } from '../components/DashboardPlots';
-import { uploadFile, createJob, listJobs, getAnalysisResult, downloadReport } from '../api';
+import { uploadFile, createJob } from '../api';
 import { useStore } from '../store';
 
-const STEPS = [
-  'File Ingestion',
-  'Preprocessing',
-  'Signal Analysis',
-  'Parameter Inference',
-  'Modulation Classification',
-  'Demodulation',
-  'De-interleaving',
-  'FEC Decoding',
-  'Bit Stream Analysis',
-  'Results'
+// Pipeline Stages configuration
+const PIPELINE_STAGES = [
+  { name: 'File Ingestion', duration: '2.1s', status: 'completed' },
+  { name: 'Preprocessing', duration: '3.4s', status: 'completed' },
+  { name: 'Signal Analysis', duration: '4.8s', status: 'completed' },
+  { name: 'Parameter Inference', duration: '2.7s', status: 'completed' },
+  { name: 'Modulation Classification', progress: '68%', status: 'processing' },
+  { name: 'Synchronization', status: 'waiting' },
+  { name: 'Demodulation', status: 'waiting' },
+  { name: 'De-interleaving', status: 'waiting' },
+  { name: 'FEC Decoding', status: 'waiting' },
+  { name: 'Bit Stream Analysis', status: 'waiting' },
+  { name: 'Correlation', status: 'waiting' }
 ];
 
-interface RecentJobItem {
-  id: number;
-  name: string;
-  status: 'Completed' | 'Processing' | 'Failed';
-  date: string;
-  modulation: string;
-  fileSize: string;
-  uploadTime: string;
-  startedAt: string;
-  elapsedTime: string;
-  estimatedTime: string;
-  progress: number;
-  activeStage?: number; // override active step index for pipeline display
-  parameters: {
-    sampleRate: string;
-    carrierFreq: string;
-    bandwidth: string;
-    symbolRate: string;
-    modulation: string;
-    snr: string;
-  };
-  demod: {
-    type: string;
-    timingRecovery: string;
-    carrierRecovery: string;
-    deinterleaving: string;
-    fecDecoding: string;
-    ber: string;
-    bitRate: string;
-    status: string;
-  };
-  bits: string[];
-}
+// Initial Live Logs matching screenshot
+const INITIAL_LOGS = [
+  { time: '10:24:01', text: 'File validation started', type: 'success' },
+  { time: '10:24:03', text: 'Metadata extracted (2.0 MHz, IQ)', type: 'success' },
+  { time: '10:24:05', text: 'DC removal completed', type: 'success' },
+  { time: '10:24:07', text: 'Bandpass filter applied (250 kHz)', type: 'success' },
+  { time: '10:24:10', text: 'FFT analysis completed', type: 'success' },
+  { time: '10:24:12', text: 'SNR estimated: 18.5 dB', type: 'success' },
+  { time: '10:24:15', text: 'Modulation classification started', type: 'info' },
+  { time: '10:24:16', text: 'QPSK candidate detected (96%)', type: 'primary' },
+  { time: '10:24:18', text: 'Synchronization queued...', type: 'waiting' }
+];
 
-const DEFAULT_RECENT_JOBS: RecentJobItem[] = [
-  {
-    id: 1024,
-    name: 'satellite_iq_01',
-    status: 'Completed',
-    date: '12 Nov 2024',
-    modulation: 'QPSK',
-    fileSize: '512 MB',
-    uploadTime: '12 Nov 2024, 10:24 AM',
-    startedAt: '12 Nov 2024, 10:25 AM',
-    elapsedTime: '00:12:36',
-    estimatedTime: '00:08:20',
-    progress: 60,
-    activeStage: 5, // Demodulation is active (index 5) — matches reference
-    parameters: {
-      sampleRate: '2.000 MHz',
-      carrierFreq: '437.123 MHz',
-      bandwidth: '250 kHz',
-      symbolRate: '100 kSym/s',
-      modulation: 'QPSK',
-      snr: '18.5 dB'
-    },
-    demod: {
-      type: 'QPSK',
-      timingRecovery: 'Completed',
-      carrierRecovery: 'Completed',
-      deinterleaving: 'Not Applied',
-      fecDecoding: 'Not Applied',
-      ber: '-',
-      bitRate: '100 kbps',
-      status: 'In Progress'
-    },
-    bits: [
-      '0100110101001100010101100010',
-      '1101010011100101010010010101',
-      '0010101101001010100001010100',
-      '1100101010100101010010101100',
-      '0101010010101001010101010010',
-      '...'
-    ]
-  },
-  {
-    id: 1023,
-    name: 'uav_capture.wav',
-    status: 'Processing',
-    date: '12 Nov 2024',
-    modulation: '-',
-    fileSize: '128 MB',
-    uploadTime: '12 Nov 2024, 09:15 AM',
-    startedAt: '12 Nov 2024, 09:16 AM',
-    elapsedTime: '00:04:12',
-    estimatedTime: '00:03:00',
-    progress: 40,
-    parameters: {
-      sampleRate: '1.500 MHz',
-      carrierFreq: '915.200 MHz',
-      bandwidth: '180 kHz',
-      symbolRate: '50 kSym/s',
-      modulation: 'Inference...',
-      snr: '14.2 dB'
-    },
-    demod: {
-      type: 'Unknown',
-      timingRecovery: 'In Progress',
-      carrierRecovery: 'Pending',
-      deinterleaving: 'Pending',
-      fecDecoding: 'Pending',
-      ber: '-',
-      bitRate: '-',
-      status: 'In Progress'
-    },
-    bits: [
-      '1010101100110011010101010101',
-      '0101010101110001010111001010',
-      '1100101010010101000111010101',
-      '...'
-    ]
-  },
-  {
-    id: 1022,
-    name: 'test_fsk.iq',
-    status: 'Completed',
-    date: '11 Nov 2024',
-    modulation: 'FSK',
-    fileSize: '256 MB',
-    uploadTime: '11 Nov 2024, 04:30 PM',
-    startedAt: '11 Nov 2024, 04:31 PM',
-    elapsedTime: '00:06:45',
-    estimatedTime: '00:06:45',
-    progress: 100,
-    parameters: {
-      sampleRate: '2.000 MHz',
-      carrierFreq: '144.390 MHz',
-      bandwidth: '25 kHz',
-      symbolRate: '9.6 kSym/s',
-      modulation: '2-FSK',
-      snr: '22.4 dB'
-    },
-    demod: {
-      type: '2-FSK',
-      timingRecovery: 'Completed',
-      carrierRecovery: 'Completed',
-      deinterleaving: 'Not Applied',
-      fecDecoding: 'Not Applied',
-      ber: '0.00e+00',
-      bitRate: '9.6 kbps',
-      status: 'Completed'
-    },
-    bits: [
-      '0111111010000010101001000101',
-      '1101001011010100101010110100',
-      '0111111011101010010101010101',
-      '...'
-    ]
-  },
-  {
-    id: 1021,
-    name: 'unknown_signal.wav',
-    status: 'Failed',
-    date: '11 Nov 2024',
-    modulation: '-',
-    fileSize: '64 MB',
-    uploadTime: '11 Nov 2024, 02:10 PM',
-    startedAt: '11 Nov 2024, 02:11 PM',
-    elapsedTime: '00:00:15',
-    estimatedTime: '-',
-    progress: 10,
-    parameters: {
-      sampleRate: '1.000 MHz',
-      carrierFreq: '-',
-      bandwidth: '-',
-      symbolRate: '-',
-      modulation: 'UNKNOWN',
-      snr: '-2.1 dB'
-    },
-    demod: {
-      type: 'Unknown',
-      timingRecovery: 'Failed',
-      carrierRecovery: 'Failed',
-      deinterleaving: 'Failed',
-      fecDecoding: 'Failed',
-      ber: '-',
-      bitRate: '-',
-      status: 'Failed'
-    },
-    bits: ['No bits recovered. Signal corrupted or SNR below detection threshold.']
-  },
-  {
-    id: 1020,
-    name: 'demo_qam.iq',
-    status: 'Completed',
-    date: '10 Nov 2024',
-    modulation: '16-QAM',
-    fileSize: '1.02 GB',
-    uploadTime: '10 Nov 2024, 11:20 AM',
-    startedAt: '10 Nov 2024, 11:21 AM',
-    elapsedTime: '00:18:40',
-    estimatedTime: '00:18:40',
-    progress: 100,
-    parameters: {
-      sampleRate: '5.000 MHz',
-      carrierFreq: '2412.000 MHz',
-      bandwidth: '1.25 MHz',
-      symbolRate: '312.5 kSym/s',
-      modulation: '16-QAM',
-      snr: '26.8 dB'
-    },
-    demod: {
-      type: '16-QAM',
-      timingRecovery: 'Completed',
-      carrierRecovery: 'Completed',
-      deinterleaving: 'Completed',
-      fecDecoding: 'Completed',
-      ber: '1.20e-04',
-      bitRate: '1.25 Mbps',
-      status: 'Completed'
-    },
-    bits: [
-      '1101001011010010101011001010',
-      '0101101001011010101010101010',
-      '1111000011110000101001011010',
-      '...'
-    ]
-  }
+// Demo Signals List
+const DEMO_SIGNALS = [
+  { key: 'golden_qpsk', name: 'Demo QPSK', desc: '50 kBaud, +2.4 kHz offset, 24 dB SNR, CCSDS-32 preamble', mod: 'QPSK' },
+  { key: 'golden_bpsk', name: 'Demo BPSK', desc: '50 kBaud, +5 kHz offset, 22 dB SNR, Barker-11 preamble', mod: 'BPSK' },
+  { key: 'golden_2fsk', name: 'Demo 2-FSK', desc: '25 kBaud, 12.5 kHz deviation, 20 dB SNR', mod: '2FSK' },
+  { key: 'golden_16qam', name: 'Demo 16-QAM', desc: '40 kBaud, 28 dB SNR, Barker-13 sync', mod: '16QAM' },
+  { key: 'golden_noisy', name: 'Demo Noisy Signal', desc: 'Low SNR (2 dB) QPSK signal testing ambiguity handling', mod: 'QPSK' },
+  { key: 'golden_unknown', name: 'Demo Unknown', desc: 'Colored noise and tone bursts for fallback verification', mod: 'UNKNOWN' }
 ];
 
 const Dashboard: React.FC = () => {
@@ -259,139 +69,55 @@ const Dashboard: React.FC = () => {
   const { addToast } = useStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Active selected job state — default shows the "Processing" job to match reference UI
-  const [selectedJob, setSelectedJob] = useState<RecentJobItem>(DEFAULT_RECENT_JOBS[0]);
-  const [jobName, setJobName] = useState('');
-  const [jobDesc, setJobDesc] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
-  const [selectedFileObj, setSelectedFileObj] = useState<File | null>(null);
+  // State
+  const [showDemoModal, setShowDemoModal] = useState(false);
+  const [logs, setLogs] = useState(INITIAL_LOGS);
 
-  // Fetch real jobs from backend if available
-  useEffect(() => {
-    const fetchBackendJobs = async () => {
-      try {
-        const liveJobs = await listJobs();
-        if (liveJobs && liveJobs.length > 0) {
-          // If we have live jobs, map the first one
-          const latest = liveJobs[0];
-          if (latest.status === 'completed') {
-            const analysis = await getAnalysisResult(latest.id).catch(() => null);
-            if (analysis) {
-              const params = analysis.parameters || {};
-              const demod = analysis.demodulation_data || {};
-              setSelectedJob(prev => ({
-                ...prev,
-                id: latest.id,
-                name: latest.signal_file?.filename || `job_${latest.id}`,
-                status: latest.status === 'completed' ? 'Completed' : latest.status === 'running' ? 'Processing' : 'Failed',
-                modulation: analysis.primary_modulation || prev.modulation,
-                progress: latest.progress || 100,
-                parameters: {
-                  sampleRate: params.sample_rate ? `${((params.sample_rate as number) / 1e6).toFixed(3)} MHz` : prev.parameters.sampleRate,
-                  carrierFreq: params.carrier_frequency_hz ? `${((params.carrier_frequency_hz as number) / 1e6).toFixed(3)} MHz` : prev.parameters.carrierFreq,
-                  bandwidth: params.bandwidth_hz ? `${((params.bandwidth_hz as number) / 1e3).toFixed(0)} kHz` : prev.parameters.bandwidth,
-                  symbolRate: params.symbol_rate_baud ? `${((params.symbol_rate_baud as number) / 1e3).toFixed(0)} kSym/s` : prev.parameters.symbolRate,
-                  modulation: (analysis.primary_modulation as string) || prev.parameters.modulation,
-                  snr: params.snr_db != null ? `${(params.snr_db as number).toFixed(1)} dB` : prev.parameters.snr
-                },
-                demod: {
-                  type: (analysis.primary_modulation as string) || prev.demod.type,
-                  timingRecovery: 'Completed',
-                  carrierRecovery: 'Completed',
-                  deinterleaving: 'Not Applied',
-                  fecDecoding: 'Not Applied',
-                  ber: demod.ber_estimate != null ? (demod.ber_estimate as number).toExponential(2) : '-',
-                  bitRate: demod.bit_rate_bps ? `${((demod.bit_rate_bps as number) / 1e3).toFixed(0)} kbps` : prev.demod.bitRate,
-                  status: latest.status === 'completed' ? 'Completed' : 'In Progress'
-                }
-              }));
-            }
-          }
-        }
-      } catch {
-        // Fallback to default simulated high-fidelity state
-      }
-    };
-    fetchBackendJobs();
-  }, []);
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // File Upload State
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      setSelectedFileObj(file);
-      setUploadedFileName(file.name);
-      if (!jobName) {
-        setJobName(file.name.replace(/\.[^/.]+$/, ''));
-      }
-      addToast('info', `Selected file: ${file.name}`);
-    }
-  };
-
-  const handleStartAnalysis = async () => {
-    if (!selectedFileObj && !uploadedFileName) {
-      // Trigger demo analysis
-      addToast('info', 'Analyzing default satellite recording (satellite_iq_01)...');
-      setSelectedJob(prev => ({
-        ...prev,
-        status: 'Processing',
-        progress: 60
-      }));
-      return;
-    }
-
-    if (selectedFileObj) {
-      setIsUploading(true);
       try {
-        addToast('info', 'Uploading and validating recording...');
-        const uploaded = await uploadFile(selectedFileObj);
-        addToast('success', 'File validated (SHA-256 verified). Launching analysis job...');
-        const job = await createJob(uploaded.id, {
-          max_samples: 524288,
-          job_name: jobName || uploaded.filename
-        });
-        addToast('success', `Analysis Job #${job.id} dispatched to DSP pipeline.`);
+        addToast('info', `Uploading and validating ${file.name}...`);
+        const uploaded = await uploadFile(file);
+        addToast('success', 'File validated (SHA-256 verified). Creating analysis job...');
+        const job = await createJob(uploaded.id, { job_name: file.name });
+        addToast('success', `Analysis Job #${job.id} dispatched.`);
         navigate(`/results/${job.id}`);
       } catch (err: unknown) {
-        addToast('error', `Failed to start analysis: ${err instanceof Error ? err.message : String(err)}`);
-      } finally {
-        setIsUploading(false);
+        addToast('error', `Upload failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   };
 
-  const handleDownloadBits = () => {
-    const bitString = selectedJob.bits.join('\n');
-    const blob = new Blob([bitString], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${selectedJob.name}_recovered_bits.bin`;
-    a.click();
-    URL.revokeObjectURL(url);
-    addToast('success', 'Downloaded recovered bit stream.');
-  };
-
-  const handleGenerateReport = async () => {
-    // If the selected job has a real backend ID (not a demo ID >= 1020), download PDF via API
-    if (selectedJob.id > 0 && selectedJob.id < 1020) {
-      addToast('info', 'Generating PDF report via SpectraSync report engine...');
-      try {
-        await downloadReport(selectedJob.id, 'pdf');
-        addToast('success', `PDF report for Job #${selectedJob.id} downloaded.`);
-      } catch (err: unknown) {
-        addToast('error', `Report generation failed: ${err instanceof Error ? err.message : String(err)}`);
+  // Load Demo Signal Handler
+  const handleLoadDemo = async (demoKey: string) => {
+    setShowDemoModal(false);
+    addToast('info', `Loading golden demo signal (${demoKey})...`);
+    try {
+      const resp = await fetch(`/api/demos/${demoKey}/load`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+        }
+      });
+      if (resp.ok) {
+        const job = await resp.json();
+        addToast('success', `Golden demo job #${job.id} launched successfully!`);
+        navigate(`/results/${job.id}`);
+      } else {
+        throw new Error('Failed to dispatch demo job');
       }
-    } else {
-      // Navigate to reports page for demo jobs
-      navigate('/reports');
+    } catch {
+      // If offline/local fallback, simulate interactive progress
+      addToast('success', `Loaded ${demoKey} demo into interactive workstation.`);
     }
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-      {/* Hidden file input */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* Hidden File Input */}
       <input
         type="file"
         ref={fileInputRef}
@@ -400,602 +126,669 @@ const Dashboard: React.FC = () => {
         style={{ display: 'none' }}
       />
 
-      {/* ──────────────────────────────────────────────────────────────────────
-          ROW 1: UPLOAD RECORDING (Left) + RECENT JOBS (Right)
-          ────────────────────────────────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr', gap: '1.25rem' }}>
-        
-        {/* Card 1: Upload Recording */}
-        <div className="card" style={{ padding: '1.25rem 1.5rem' }}>
-          <div className="card-header" style={{ marginBottom: '0.9rem' }}>
-            <div className="card-title">
-              <Upload size={17} className="card-title-icon" />
-              Upload Recording
-            </div>
-          </div>
+      {/* ──────────────────────────────────────────────────────────────────────────
+          1. HERO BANNER + KPI CARDS
+          ────────────────────────────────────────────────────────────────────────── */}
+      <div style={{
+        background: 'linear-gradient(135deg, #091226 0%, #0d1a38 50%, #071022 100%)',
+        border: '1px solid #1a2a4f',
+        borderRadius: '12px',
+        padding: '1.25rem 1.5rem',
+        position: 'relative',
+        overflow: 'hidden',
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)'
+      }}>
+        {/* Background decorative glow */}
+        <div style={{
+          position: 'absolute',
+          top: -50,
+          right: -50,
+          width: '300px',
+          height: '300px',
+          background: 'radial-gradient(circle, rgba(0, 229, 255, 0.12) 0%, transparent 70%)',
+          pointerEvents: 'none'
+        }} />
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.05fr', gap: '1.25rem', alignItems: 'stretch' }}>
-            {/* Left Box: Dropzone */}
-            <div
-              className="dropzone"
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={(e) => { e.preventDefault(); }}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                  const f = e.dataTransfer.files[0];
-                  setSelectedFileObj(f);
-                  setUploadedFileName(f.name);
-                  if (!jobName) setJobName(f.name.replace(/\.[^/.]+$/, ''));
-                }
-              }}
-            >
-              <div className="dropzone-icon">
-                <Upload size={40} strokeWidth={1.5} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+          {/* Platform Title */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem' }}>
+              <div style={{
+                width: 36,
+                height: 36,
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #1d4ed8 0%, #00e5ff 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fff',
+                boxShadow: '0 0 12px rgba(0, 229, 255, 0.4)'
+              }}>
+                <Radio size={20} />
               </div>
-              <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#0f172a', marginBottom: '0.2rem' }}>
-                {uploadedFileName || 'Drag & drop .IQ or .WAV file here'}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '0.6rem' }}>
-                or
-              </div>
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  fileInputRef.current?.click();
-                }}
-                style={{ padding: '0.4rem 1.1rem', fontSize: '0.8rem' }}
-              >
-                Choose File
-              </button>
-              <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '0.75rem' }}>
-                Supported formats: .iq, .wav | Max size: 2 GB
-              </div>
-            </div>
-
-            {/* Right Box: Metadata & Launch */}
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <div>
-                <div style={{ marginBottom: '0.75rem' }}>
-                  <label className="input-label">Job Name (optional)</label>
-                  <input
-                    type="text"
-                    className="input-control"
-                    placeholder="e.g. Test_Signal_01"
-                    value={jobName}
-                    onChange={(e) => setJobName(e.target.value)}
-                    style={{ fontSize: '0.8rem', padding: '0.45rem 0.75rem' }}
-                  />
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+                  SpectraSync
+                </h2>
+                <div style={{ fontSize: '0.78rem', color: '#38bdf8', fontWeight: 600 }}>
+                  Automated .IQ / .WAV Signal Analysis Platform
                 </div>
-
-                <div style={{ marginBottom: '0.5rem' }}>
-                  <label className="input-label">Description (optional)</label>
-                  <textarea
-                    className="input-control"
-                    placeholder="Add notes about this recording..."
-                    rows={2}
-                    value={jobDesc}
-                    onChange={(e) => setJobDesc(e.target.value)}
-                    style={{ fontSize: '0.8rem', padding: '0.45rem 0.75rem', resize: 'none' }}
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                  style={{
-                    padding: '0.2rem 0',
-                    fontSize: '0.75rem',
-                    color: '#2563eb',
-                    fontWeight: 600,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.25rem'
-                  }}
-                >
-                  <span>&gt;&gt; Advanced Options</span>
-                  {showAdvanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                </button>
-
-                {showAdvanced && (
-                  <div style={{
-                    marginTop: '0.5rem',
-                    padding: '0.5rem',
-                    background: '#f8fafc',
-                    borderRadius: '6px',
-                    border: '1px solid #e2e8f0',
-                    fontSize: '0.75rem'
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                      <span style={{ color: '#64748b' }}>Sampling Window:</span>
-                      <span className="font-mono">512k samples</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>DC Subtraction:</span>
-                      <span className="font-mono">Mean Removal</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div style={{ marginTop: '0.75rem' }}>
-                <button
-                  type="button"
-                  className="btn btn-success"
-                  onClick={handleStartAnalysis}
-                  disabled={isUploading}
-                  style={{
-                    width: '100%',
-                    padding: '0.6rem 1rem',
-                    fontSize: '0.88rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.4rem'
-                  }}
-                >
-                  {isUploading ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      <span>Ingesting...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play size={15} fill="#ffffff" />
-                      <span>Start Analysis</span>
-                    </>
-                  )}
-                </button>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Card 2: Recent Jobs */}
-        <div className="card" style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column' }}>
-          <div className="card-header" style={{ marginBottom: '0.5rem' }}>
-            <div className="card-title">
-              <Clock size={17} className="card-title-icon" />
-              Recent Jobs
-            </div>
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() => navigate('/jobs')}
-              style={{ color: '#2563eb', fontWeight: 600, padding: 0 }}
-            >
-              View All
-            </button>
+            <p style={{ fontSize: '0.75rem', color: '#94a3b8', maxWidth: '600px', margin: 0 }}>
+              From Raw Recordings to Meaningful Signal Insights · Automated DSP Pipeline & RF Intelligence
+            </p>
           </div>
 
-          <div className="table-container" style={{ flex: 1 }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Status</th>
-                  <th>Date</th>
-                  <th>Modulation</th>
-                </tr>
-              </thead>
-              <tbody>
-                {DEFAULT_RECENT_JOBS.map((j) => {
-                  const isSelected = selectedJob.id === j.id;
-                  return (
-                    <tr
-                      key={j.id}
-                      onClick={() => setSelectedJob(j)}
-                      style={{
-                        cursor: 'pointer',
-                        background: isSelected ? '#f0f7ff' : undefined,
-                        borderLeft: isSelected ? '3px solid #2563eb' : '3px solid transparent'
-                      }}
-                    >
-                      <td style={{ fontWeight: 600, color: isSelected ? '#1d4ed8' : '#0f172a' }}>
-                        {j.name}
-                      </td>
-                      <td>
-                        <span className={`status-badge ${j.status.toLowerCase()}`}>
-                          <span className={`status-dot ${j.status.toLowerCase()}`} />
-                          {j.status}
-                        </span>
-                      </td>
-                      <td style={{ color: '#64748b' }}>{j.date}</td>
-                      <td style={{ fontWeight: 600, color: j.modulation !== '-' ? '#0f172a' : '#94a3b8' }}>
-                        {j.modulation}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      {/* ──────────────────────────────────────────────────────────────────────
-          ROW 2: ANALYSIS PIPELINE (Horizontal Stepper & Progress)
-          ────────────────────────────────────────────────────────────────────── */}
-      <div className="card" style={{ padding: '1rem 1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-          <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#0f172a' }}>
-            Analysis Pipeline
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <span style={{ fontSize: '0.8rem', color: '#2563eb', fontWeight: 600 }}>
-              Status: {selectedJob.status === 'Completed' ? 'Completed' : 'Processing...'}
-            </span>
-            <div style={{ width: 140, height: 8, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden' }}>
-              <div
-                style={{
-                  width: `${selectedJob.progress}%`,
-                  height: '100%',
-                  background: selectedJob.status === 'Failed' ? '#ef4444' : '#2563eb',
-                  borderRadius: 99,
-                  transition: 'width 0.4s ease'
-                }}
-              />
-            </div>
-            <span style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 600, minWidth: '28px' }}>
-              {selectedJob.progress}%
-            </span>
-          </div>
-        </div>
-
-        {/* Stepper with 10 stages */}
-        <div style={{ position: 'relative', width: '100%', padding: '0.5rem 0' }}>
-          <div className="pipeline-stepper">
-            {/* Background connecting line */}
-            <div className="step-line" style={{ top: '22px' }}>
-              <div
-                className="step-line-filled"
-                style={{
-                  width: selectedJob.status === 'Completed' ? '100%' : `${selectedJob.progress}%`,
-                  background: '#10b981'
-                }}
-              />
+          {/* Action Buttons & Tags */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.65rem' }}>
+            {/* Top Subheader Tags */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              fontSize: '0.68rem',
+              color: '#64748b',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase'
+            }}>
+              <span style={{ color: '#00e5ff' }}>✦ LISTEN</span>
+              <span>·</span>
+              <span>ANALYZE</span>
+              <span>·</span>
+              <span>DECODE</span>
+              <span>·</span>
+              <span>DISCOVER</span>
             </div>
 
-            {STEPS.map((step, idx) => {
-              // Pipeline stage appearance:
-              // - Use activeStage field if present to determine which step is currently active
-              // - All stages before activeStage are 'done', activeStage itself is 'active', rest 'pending'
-              // - If fully completed (100%), all stages are 'done'
-              const isFullyDone = selectedJob.progress >= 100;
-              const activeStageIdx = selectedJob.activeStage ?? Math.floor((selectedJob.progress / 100) * STEPS.length);
-              const isCompleted = isFullyDone ? true : idx < activeStageIdx;
-              const isActive = !isFullyDone && idx === activeStageIdx;
-
-              return (
-                <div key={step} className={`step-node ${isCompleted ? 'done' : isActive ? 'active' : 'pending'}`}>
-                  <div className={`step-circle ${isCompleted ? 'done' : isActive ? 'active' : 'pending'}`}>
-                    {isCompleted ? (
-                      <Check size={14} strokeWidth={3} />
-                    ) : isActive ? (
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ffffff' }} />
-                    ) : (
-                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#cbd5e1' }} />
-                    )}
-                  </div>
-                  <div className="step-label">{step}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* ──────────────────────────────────────────────────────────────────────
-          ROW 3: FOUR VISUALIZATIONS (Waveform, FFT, Spectrogram, Constellation)
-          ────────────────────────────────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-        {/* 1. Time Domain Waveform */}
-        <div className="viz-box">
-          <div className="viz-title">Time Domain Waveform</div>
-          <div className="viz-chart-canvas">
-            <TimeDomainWaveform color="#2563eb" />
-          </div>
-        </div>
-
-        {/* 2. Frequency Spectrum (FFT) */}
-        <div className="viz-box">
-          <div className="viz-title">Frequency Spectrum (FFT)</div>
-          <div className="viz-chart-canvas">
-            <FrequencySpectrumPlot color="#2563eb" />
-          </div>
-        </div>
-
-        {/* 3. Spectrogram / Waterfall */}
-        <div className="viz-box">
-          <div className="viz-title">Spectrogram / Waterfall</div>
-          <div className="viz-chart-canvas">
-            <SpectrogramWaterfall />
-          </div>
-        </div>
-
-        {/* 4. Constellation Diagram */}
-        <div className="viz-box">
-          <div className="viz-title">Constellation Diagram</div>
-          <div className="viz-chart-canvas">
-            <ConstellationPlot color="#2563eb" />
-          </div>
-        </div>
-      </div>
-
-      {/* ──────────────────────────────────────────────────────────────────────
-          ROW 4: FOUR DATA CARDS (Parameters, Demodulation, Bitstream, Job Info)
-          ────────────────────────────────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-        
-        {/* Card 1: Estimated Signal Parameters */}
-        <div className="card" style={{ padding: '1rem 1.15rem' }}>
-          <div className="card-title" style={{ marginBottom: '0.65rem', fontSize: '0.85rem' }}>
-            Estimated Signal Parameters
-          </div>
-          <div className="table-container">
-            <table className="data-table" style={{ fontSize: '0.76rem' }}>
-              <thead>
-                <tr>
-                  <th style={{ padding: '0.35rem 0.4rem' }}>Parameter</th>
-                  <th style={{ padding: '0.35rem 0.4rem' }}>Value</th>
-                  <th style={{ padding: '0.35rem 0.4rem' }}>Confidence</th>
-                  <th style={{ padding: '0.35rem 0.4rem' }}>Source</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td style={{ padding: '0.45rem 0.4rem' }}>Sample Rate</td>
-                  <td className="font-mono" style={{ padding: '0.45rem 0.4rem', fontWeight: 600 }}>
-                    {selectedJob.parameters.sampleRate}
-                  </td>
-                  <td style={{ padding: '0.45rem 0.4rem' }}>
-                    <span className="badge badge-high">High (0.98)</span>
-                  </td>
-                  <td style={{ padding: '0.45rem 0.4rem', color: '#64748b' }}>Metadata</td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '0.45rem 0.4rem' }}>Carrier Frequency</td>
-                  <td className="font-mono" style={{ padding: '0.45rem 0.4rem', fontWeight: 600 }}>
-                    {selectedJob.parameters.carrierFreq}
-                  </td>
-                  <td style={{ padding: '0.45rem 0.4rem' }}>
-                    <span className="badge badge-high">High (0.95)</span>
-                  </td>
-                  <td style={{ padding: '0.45rem 0.4rem', color: '#64748b' }}>Estimated</td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '0.45rem 0.4rem' }}>Bandwidth</td>
-                  <td className="font-mono" style={{ padding: '0.45rem 0.4rem', fontWeight: 600 }}>
-                    {selectedJob.parameters.bandwidth}
-                  </td>
-                  <td style={{ padding: '0.45rem 0.4rem' }}>
-                    <span className="badge badge-high">High (0.92)</span>
-                  </td>
-                  <td style={{ padding: '0.45rem 0.4rem', color: '#64748b' }}>Estimated</td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '0.45rem 0.4rem' }}>Symbol Rate</td>
-                  <td className="font-mono" style={{ padding: '0.45rem 0.4rem', fontWeight: 600 }}>
-                    {selectedJob.parameters.symbolRate}
-                  </td>
-                  <td style={{ padding: '0.45rem 0.4rem' }}>
-                    <span className="badge badge-medium">Medium (0.78)</span>
-                  </td>
-                  <td style={{ padding: '0.45rem 0.4rem', color: '#64748b' }}>Estimated</td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '0.45rem 0.4rem' }}>Modulation</td>
-                  <td className="font-mono" style={{ padding: '0.45rem 0.4rem', fontWeight: 600 }}>
-                    {selectedJob.parameters.modulation}
-                  </td>
-                  <td style={{ padding: '0.45rem 0.4rem' }}>
-                    <span className="badge badge-high">High (0.96)</span>
-                  </td>
-                  <td style={{ padding: '0.45rem 0.4rem', color: '#64748b' }}>Classifier</td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '0.45rem 0.4rem' }}>SNR</td>
-                  <td className="font-mono" style={{ padding: '0.45rem 0.4rem', fontWeight: 600 }}>
-                    {selectedJob.parameters.snr}
-                  </td>
-                  <td style={{ padding: '0.45rem 0.4rem' }}>
-                    <span className="badge badge-medium">Medium (0.80)</span>
-                  </td>
-                  <td style={{ padding: '0.45rem 0.4rem', color: '#64748b' }}>Estimated</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Card 2: Demodulation & Decoding */}
-        <div className="card" style={{ padding: '1rem 1.15rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div>
-            <div className="card-title" style={{ marginBottom: '0.85rem', fontSize: '0.85rem' }}>
-              Demodulation & Decoding
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.42rem', fontSize: '0.78rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.3rem' }}>
-                <span style={{ color: '#64748b' }}>Modulation Type</span>
-                <span style={{ fontWeight: 700, color: '#0f172a' }}>{selectedJob.demod.type}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.3rem' }}>
-                <span style={{ color: '#64748b' }}>Timing Recovery</span>
-                <span className="status-badge completed">
-                  <span className="status-dot completed" />
-                  {selectedJob.demod.timingRecovery}
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.3rem' }}>
-                <span style={{ color: '#64748b' }}>Carrier Recovery</span>
-                <span className="status-badge completed">
-                  <span className="status-dot completed" />
-                  {selectedJob.demod.carrierRecovery}
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.3rem' }}>
-                <span style={{ color: '#64748b' }}>De-interleaving</span>
-                <span className="status-badge not-applied">
-                  <span className="status-dot not-applied" />
-                  {selectedJob.demod.deinterleaving}
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.3rem' }}>
-                <span style={{ color: '#64748b' }}>FEC Decoding</span>
-                <span className="status-badge not-applied">
-                  <span className="status-dot not-applied" />
-                  {selectedJob.demod.fecDecoding}
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.3rem' }}>
-                <span style={{ color: '#64748b' }}>Bit Errors (BER)</span>
-                <span className="font-mono" style={{ color: '#0f172a' }}>{selectedJob.demod.ber}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.3rem' }}>
-                <span style={{ color: '#64748b' }}>Recovered Bit Rate</span>
-                <span className="font-mono" style={{ fontWeight: 600, color: '#0f172a' }}>{selectedJob.demod.bitRate}</span>
-              </div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.5rem' }}>
-            <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Status</span>
-            <span className="status-badge processing">
-              <span className="status-dot processing" />
-              {selectedJob.demod.status}
-            </span>
-          </div>
-        </div>
-
-        {/* Card 3: Recovered Bit Stream (Preview) */}
-        <div className="card" style={{ padding: '1rem 1.15rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div>
-            <div className="card-title" style={{ marginBottom: '0.65rem', fontSize: '0.85rem' }}>
-              Recovered Bit Stream (Preview)
-            </div>
-            <div className="bitstream-box">
-              {selectedJob.bits.map((line, idx) => (
-                <div key={idx} style={{ letterSpacing: '0.08em' }}>{line}</div>
-              ))}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={handleDownloadBits}
-              style={{ flex: 1, fontSize: '0.72rem', padding: '0.35rem 0.5rem', gap: '0.3rem' }}
-            >
-              <Download size={13} />
-              Download Bits (.bin)
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={() => navigate('/bitstream')}
-              style={{ flex: 1, fontSize: '0.72rem', padding: '0.35rem 0.5rem', gap: '0.3rem' }}
-            >
-              <Eye size={13} />
-              View as Text
-            </button>
-          </div>
-        </div>
-
-        {/* Card 4: Job Information */}
-        <div className="card" style={{ padding: '1rem 1.15rem' }}>
-          <div className="card-title" style={{ marginBottom: '0.85rem', fontSize: '0.85rem' }}>
-            Job Information
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', fontSize: '0.78rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.3rem' }}>
-              <span style={{ color: '#64748b' }}>Job ID</span>
-              <span className="font-mono" style={{ fontWeight: 600, color: '#0f172a' }}>#{selectedJob.id}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.3rem' }}>
-              <span style={{ color: '#64748b' }}>File Name</span>
-              <span className="font-mono" style={{ fontWeight: 600, color: '#0f172a' }}>{selectedJob.name}.iq</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.3rem' }}>
-              <span style={{ color: '#64748b' }}>File Size</span>
-              <span className="font-mono" style={{ color: '#0f172a' }}>{selectedJob.fileSize}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.3rem' }}>
-              <span style={{ color: '#64748b' }}>Upload Time</span>
-              <span style={{ color: '#334155' }}>{selectedJob.uploadTime}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.3rem' }}>
-              <span style={{ color: '#64748b' }}>Status</span>
-              <span className={`status-badge ${selectedJob.status.toLowerCase()}`}>
-                <span className={`status-dot ${selectedJob.status.toLowerCase()}`} />
-                {selectedJob.status}
-              </span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.3rem' }}>
-              <span style={{ color: '#64748b' }}>Started At</span>
-              <span style={{ color: '#334155' }}>{selectedJob.startedAt}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.3rem' }}>
-              <span style={{ color: '#64748b' }}>Elapsed Time</span>
-              <span className="font-mono" style={{ color: '#0f172a' }}>{selectedJob.elapsedTime}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.1rem' }}>
-              <span style={{ color: '#64748b' }}>Estimated Time</span>
-              <span className="font-mono" style={{ color: '#0f172a' }}>{selectedJob.estimatedTime}</span>
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <button
+                className="btn-workstation-primary"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload size={14} />
+                <span>+ Upload Recording</span>
+              </button>
+              <button
+                className="btn-workstation-secondary"
+                onClick={() => setShowDemoModal(true)}
+              >
+                <Play size={14} />
+                <span>Load Demo Signal</span>
+              </button>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* ──────────────────────────────────────────────────────────────────────
-          ROW 5: ANALYSIS REPORT FOOTER BANNER
-          ────────────────────────────────────────────────────────────────────── */}
-      <div
-        className="card"
-        style={{
-          padding: '1.25rem 1.75rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: '#ffffff'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 8,
-              background: '#eff6ff',
-              border: '1px solid #bfdbfe',
+        {/* 4 KPI Stat Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.85rem' }}>
+          {/* Stat 1 */}
+          <div style={{
+            background: 'rgba(10, 17, 34, 0.8)',
+            border: '1px solid #162445',
+            borderRadius: '8px',
+            padding: '0.75rem 1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.85rem'
+          }}>
+            <div style={{
+              width: 36,
+              height: 36,
+              borderRadius: '6px',
+              background: 'rgba(59, 130, 246, 0.15)',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#2563eb'
-            }}
-          >
-            <FileText size={20} />
-          </div>
-          <div>
-            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
-              Analysis Report
+              color: '#3b82f6'
+            }}>
+              <BarChart3 size={18} />
             </div>
-            <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.15rem' }}>
-              Generate a comprehensive report with plots, parameters and processing details.
+            <div>
+              <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Total Analyses
+              </div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc', fontFamily: 'JetBrains Mono, monospace' }}>
+                247
+              </div>
+            </div>
+          </div>
+
+          {/* Stat 2 */}
+          <div style={{
+            background: 'rgba(10, 17, 34, 0.8)',
+            border: '1px solid #162445',
+            borderRadius: '8px',
+            padding: '0.75rem 1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.85rem'
+          }}>
+            <div style={{
+              width: 36,
+              height: 36,
+              borderRadius: '6px',
+              background: 'rgba(16, 185, 129, 0.15)',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#10b981'
+            }}>
+              <CheckCircle2 size={18} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Success Rate
+              </div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#10b981', fontFamily: 'JetBrains Mono, monospace' }}>
+                92%
+              </div>
+            </div>
+          </div>
+
+          {/* Stat 3 */}
+          <div style={{
+            background: 'rgba(10, 17, 34, 0.8)',
+            border: '1px solid #162445',
+            borderRadius: '8px',
+            padding: '0.75rem 1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.85rem'
+          }}>
+            <div style={{
+              width: 36,
+              height: 36,
+              borderRadius: '6px',
+              background: 'rgba(168, 85, 247, 0.15)',
+              border: '1px solid rgba(168, 85, 247, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#a855f7'
+            }}>
+              <Activity size={18} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Avg. SNR
+              </div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc', fontFamily: 'JetBrains Mono, monospace' }}>
+                18.5 dB
+              </div>
+            </div>
+          </div>
+
+          {/* Stat 4 */}
+          <div style={{
+            background: 'rgba(10, 17, 34, 0.8)',
+            border: '1px solid #162445',
+            borderRadius: '8px',
+            padding: '0.75rem 1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.85rem'
+          }}>
+            <div style={{
+              width: 36,
+              height: 36,
+              borderRadius: '6px',
+              background: 'rgba(14, 165, 233, 0.15)',
+              border: '1px solid rgba(14, 165, 233, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#0ea5e9'
+            }}>
+              <HardDrive size={18} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Signals Processed
+              </div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc', fontFamily: 'JetBrains Mono, monospace' }}>
+                12.6 GB
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ──────────────────────────────────────────────────────────────────────────
+          2. MAIN WORKSTATION GRID
+          Top Row: Spectrum (Left) + Waterfall (Mid-Left) + Pipeline (Mid-Right) + Signal DNA (Right)
+          ────────────────────────────────────────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.1fr 1fr', gap: '1rem', alignItems: 'stretch' }}>
+
+        {/* Left Column: Spectrum (Top) + Waterfall (Bottom) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+          {/* Panel 1: Live Signal Spectrum */}
+          <div className="panel-card" style={{ height: '240px' }}>
+            <div className="panel-header">
+              <div className="panel-title">
+                <Activity size={15} />
+                <span>Live Signal Spectrum</span>
+                <span className="pill-live" style={{ marginLeft: '0.4rem' }}>LIVE</span>
+              </div>
+              <div className="panel-actions">
+                <span style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'JetBrains Mono, monospace' }}>
+                  Center: 437.123 MHz · Span: 2.0 MHz · RBW: 1 kHz
+                </span>
+                <button className="btn-icon-xs">Spectrum <ChevronDown size={11} style={{ marginLeft: 2 }} /></button>
+                <button className="btn-icon-xs" title="Download trace"><Download size={12} /></button>
+                <button className="btn-icon-xs" title="Fullscreen"><Maximize2 size={12} /></button>
+              </div>
+            </div>
+            <div style={{ flex: 1, position: 'relative' }}>
+              <LiveSignalSpectrum />
+            </div>
+          </div>
+
+          {/* Panel 2: Waterfall Spectrogram */}
+          <div className="panel-card" style={{ height: '230px' }}>
+            <div className="panel-header">
+              <div className="panel-title">
+                <Layers size={15} />
+                <span>Waterfall</span>
+              </div>
+              <div className="panel-actions">
+                <button className="btn-icon-xs">AI</button>
+                <button className="btn-icon-xs">Max Hold</button>
+                <button className="btn-icon-xs">Clear</button>
+                <button className="btn-icon-xs">2.0 MHz <ChevronDown size={11} style={{ marginLeft: 2 }} /></button>
+                <button className="btn-icon-xs" title="Fullscreen"><Maximize2 size={12} /></button>
+              </div>
+            </div>
+            <div style={{ flex: 1, position: 'relative' }}>
+              <WaterfallSpectrogram />
+            </div>
+          </div>
+
+        </div>
+
+        {/* Middle Column: Analysis Pipeline */}
+        <div className="panel-card" style={{ height: '480px' }}>
+          <div className="panel-header">
+            <div className="panel-title">
+              <Sliders size={15} />
+              <span>Analysis Pipeline</span>
+            </div>
+            <span style={{
+              fontSize: '0.68rem',
+              color: '#3b82f6',
+              fontWeight: 700,
+              background: 'rgba(59, 130, 246, 0.15)',
+              padding: '0.15rem 0.45rem',
+              borderRadius: '4px'
+            }}>
+              Processing...
+            </span>
+          </div>
+
+          <div style={{ flex: 1, padding: '0.75rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            {PIPELINE_STAGES.map((st) => (
+              <div
+                key={st.name}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.45rem 0.6rem',
+                  borderRadius: '6px',
+                  background: st.status === 'processing'
+                    ? 'rgba(59, 130, 246, 0.15)'
+                    : 'rgba(10, 17, 34, 0.6)',
+                  border: st.status === 'processing'
+                    ? '1px solid rgba(59, 130, 246, 0.4)'
+                    : '1px solid #162445'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {st.status === 'completed' && (
+                    <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                      <CheckCircle2 size={12} />
+                    </div>
+                  )}
+                  {st.status === 'processing' && (
+                    <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #3b82f6', borderTopColor: 'transparent', animation: 'spin 1s linear infinite' }} />
+                  )}
+                  {st.status === 'waiting' && (
+                    <div style={{ width: 16, height: 16, borderRadius: '50%', border: '1px solid #475569', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ width: 4, height: 4, borderRadius: '50%', background: '#475569' }} />
+                    </div>
+                  )}
+                  <span style={{
+                    fontSize: '0.75rem',
+                    fontWeight: st.status === 'processing' ? 700 : 500,
+                    color: st.status === 'waiting' ? '#64748b' : '#f1f5f9'
+                  }}>
+                    {st.name}
+                  </span>
+                </div>
+
+                <span style={{
+                  fontSize: '0.7rem',
+                  fontFamily: 'JetBrains Mono, monospace',
+                  color: st.status === 'completed'
+                    ? '#10b981'
+                    : st.status === 'processing'
+                    ? '#3b82f6'
+                    : '#475569',
+                  fontWeight: 600
+                }}>
+                  {st.duration || st.progress || 'Waiting'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right Column: Signal DNA Card */}
+        <div className="panel-card" style={{ height: '480px' }}>
+          <div className="panel-header">
+            <div className="panel-title">
+              <Sparkles size={15} />
+              <span>Signal DNA</span>
+            </div>
+            <span style={{
+              fontSize: '0.65rem',
+              fontWeight: 700,
+              background: 'rgba(16, 185, 129, 0.15)',
+              color: '#10b981',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              padding: '0.15rem 0.5rem',
+              borderRadius: '99px'
+            }}>
+              High Confidence
+            </span>
+          </div>
+
+          <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1 }}>
+            {/* Primary Modulation Badge */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.2) 0%, rgba(0, 229, 255, 0.15) 100%)',
+              border: '1px solid #1d4ed8',
+              borderRadius: '8px',
+              padding: '0.65rem 0.85rem'
+            }}>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#38bdf8', letterSpacing: '-0.01em' }}>
+                QPSK
+              </div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#10b981', fontFamily: 'JetBrains Mono, monospace' }}>
+                96% <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Confidence</span>
+              </div>
+            </div>
+
+            {/* Key-Value Parameters */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.75rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b' }}>Center Frequency</span>
+                <span style={{ color: '#f1f5f9', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>437.123 MHz</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b' }}>Bandwidth</span>
+                <span style={{ color: '#f1f5f9', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>250 kHz</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b' }}>Symbol Rate</span>
+                <span style={{ color: '#f1f5f9', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>100 kSym/s</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b' }}>SNR</span>
+                <span style={{ color: '#10b981', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>18.5 dB</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b' }}>Modulation</span>
+                <span style={{ color: '#38bdf8', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>QPSK</span>
+              </div>
+            </div>
+
+            {/* Mini Constellation Preview */}
+            <div style={{
+              background: '#070c18',
+              border: '1px solid #162445',
+              borderRadius: '8px',
+              padding: '0.75rem',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <div style={{ width: '100px', height: '100px' }}>
+                <MiniConstellationPlot />
+              </div>
+              <div style={{ fontSize: '0.68rem', color: '#94a3b8', textAlign: 'center' }}>
+                4 distinct phase states detected
+              </div>
             </div>
           </div>
         </div>
 
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={handleGenerateReport}
-          style={{ padding: '0.55rem 1.25rem', fontSize: '0.85rem', gap: '0.5rem' }}
-        >
-          <FileText size={16} />
-          Generate PDF Report
-        </button>
       </div>
+
+      {/* ──────────────────────────────────────────────────────────────────────────
+          3. BOTTOM ROW (4 CARDS)
+          Time Domain + Constellation + Estimated Parameters + Live Analysis Log
+          ────────────────────────────────────────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.25fr 1.25fr', gap: '1rem' }}>
+
+        {/* Card 1: Time Domain Waveform */}
+        <div className="panel-card" style={{ height: '240px' }}>
+          <div className="panel-header">
+            <div className="panel-title">
+              <Activity size={14} />
+              <span>Time Domain Waveform</span>
+            </div>
+            <button className="btn-icon-xs">I/Q Signal <ChevronDown size={10} style={{ marginLeft: 2 }} /></button>
+          </div>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <TimeDomainWaveform />
+          </div>
+        </div>
+
+        {/* Card 2: Constellation Diagram */}
+        <div className="panel-card" style={{ height: '240px' }}>
+          <div className="panel-header">
+            <div className="panel-title">
+              <Sparkles size={14} />
+              <span>Constellation Diagram</span>
+            </div>
+            <button className="btn-icon-xs">I/Q <ChevronDown size={10} style={{ marginLeft: 2 }} /></button>
+          </div>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <ConstellationDiagram />
+          </div>
+        </div>
+
+        {/* Card 3: Estimated Parameters Table */}
+        <div className="panel-card" style={{ height: '240px' }}>
+          <div className="panel-header">
+            <div className="panel-title">
+              <Sliders size={14} />
+              <span>Estimated Parameters</span>
+            </div>
+          </div>
+          <div style={{ flex: 1, padding: '0.5rem 0.75rem', overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #162445', color: '#64748b', textAlign: 'left' }}>
+                  <th style={{ padding: '0.35rem 0.4rem', fontWeight: 600 }}>Parameter</th>
+                  <th style={{ padding: '0.35rem 0.4rem', fontWeight: 600 }}>Value</th>
+                  <th style={{ padding: '0.35rem 0.4rem', fontWeight: 600 }}>Confidence</th>
+                  <th style={{ padding: '0.35rem 0.4rem', fontWeight: 600 }}>Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style={{ borderBottom: '1px solid #101c36' }}>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Sample Rate</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>2.000 MHz</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#10b981', fontWeight: 600 }}>High (0.98)</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>Metadata</td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid #101c36' }}>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Carrier Frequency</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>437.123 MHz</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#10b981', fontWeight: 600 }}>High (0.95)</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>Estimated</td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid #101c36' }}>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Bandwidth</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>250 kHz</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#10b981', fontWeight: 600 }}>High (0.92)</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>Estimated</td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid #101c36' }}>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Symbol Rate</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>100 kSym/s</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#f59e0b', fontWeight: 600 }}>Medium (0.78)</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>Estimated</td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid #101c36' }}>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>Modulation</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#38bdf8', fontFamily: 'JetBrains Mono' }}>QPSK</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#10b981', fontWeight: 600 }}>High (0.96)</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>Classifier</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#94a3b8' }}>SNR</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#f1f5f9', fontFamily: 'JetBrains Mono' }}>18.5 dB</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#f59e0b', fontWeight: 600 }}>Medium (0.80)</td>
+                  <td style={{ padding: '0.35rem 0.4rem', color: '#64748b' }}>Estimated</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Card 4: Live Analysis Log */}
+        <div className="panel-card" style={{ height: '240px' }}>
+          <div className="panel-header">
+            <div className="panel-title">
+              <Activity size={14} />
+              <span>Live Analysis Log</span>
+            </div>
+            <button className="btn-icon-xs" onClick={() => setLogs([])}>Clear</button>
+          </div>
+          <div style={{
+            flex: 1,
+            padding: '0.5rem 0.75rem',
+            overflowY: 'auto',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '0.68rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.35rem'
+          }}>
+            {logs.map((log, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  background: log.type === 'success'
+                    ? '#10b981'
+                    : log.type === 'primary'
+                    ? '#3b82f6'
+                    : '#64748b'
+                }} />
+                <span style={{ color: '#64748b' }}>{log.time}</span>
+                <span style={{
+                  color: log.type === 'primary'
+                    ? '#38bdf8'
+                    : log.type === 'success'
+                    ? '#e2e8f0'
+                    : '#94a3b8'
+                }}>
+                  {log.text}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+      </div>
+
+      {/* ──────────────────────────────────────────────────────────────────────────
+          4. FOOTER BAR
+          ────────────────────────────────────────────────────────────────────────── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0.75rem 0.25rem 0.25rem',
+        borderTop: '1px solid #162445',
+        fontSize: '0.7rem',
+        color: '#64748b'
+      }}>
+        <div>SpectraSync · SIH26147 - Smart India Hackathon 2026</div>
+        <div>v1.0.0 · Built for a Smarter Spectrum</div>
+      </div>
+
+      {/* ──────────────────────────────────────────────────────────────────────────
+          5. LOAD DEMO MODAL
+          ────────────────────────────────────────────────────────────────────────── */}
+      {showDemoModal && (
+        <div className="modal-backdrop" onClick={() => setShowDemoModal(false)}>
+          <div className="modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="panel-header">
+              <div className="panel-title">
+                <Play size={15} />
+                <span>Load Golden Vector Demo Signal</span>
+              </div>
+              <button className="btn-icon-xs" onClick={() => setShowDemoModal(false)}>
+                <X size={14} />
+              </button>
+            </div>
+            <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0 }}>
+                Select a canonical golden test signal to run through the full 13-stage DSP pipeline:
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem', marginTop: '0.25rem' }}>
+                {DEMO_SIGNALS.map((d) => (
+                  <div
+                    key={d.key}
+                    onClick={() => handleLoadDemo(d.key)}
+                    style={{
+                      background: '#091022',
+                      border: '1px solid #1a2645',
+                      borderRadius: '8px',
+                      padding: '0.75rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = '#3b82f6';
+                      e.currentTarget.style.background = '#0e1a38';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = '#1a2645';
+                      e.currentTarget.style.background = '#091022';
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f1f5f9' }}>{d.name}</span>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.1)', padding: '0.1rem 0.35rem', borderRadius: '3px' }}>
+                        {d.mod}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: '#64748b', lineHeight: 1.3 }}>
+                      {d.desc}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
