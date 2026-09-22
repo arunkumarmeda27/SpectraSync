@@ -322,7 +322,32 @@ const ParametersPage: React.FC = () => {
           <ParamCard title="Modulation" value={modulation} desc="Detected scheme" highlight={true} />
           <ParamCard title="Confidence" value={result.confidence ? `${Math.round(result.confidence * 100)}%` : 'N/A'} desc="Classifier confidence" />
           <ParamCard title="Symbol Rate" value={formatFreq(params.symbol_rate?.value)} desc="Baud rate (Rs)" />
-          <ParamCard title="Bits/Symbol" value={modulation === 'BPSK' ? '1' : modulation === 'QPSK' ? '2' : modulation === '8PSK' ? '3' : modulation === '16QAM' ? '4' : 'N/A'} desc="Modulation order" />
+          <ParamCard
+            title="Bits/Symbol"
+            value={(() => {
+              const bpsMap: Record<string, string> = {
+                'BPSK': '1', 'DBPSK': '1',
+                'QPSK': '2', 'DQPSK': '2', 'OQPSK': '2',
+                '8PSK': '3', 'D8PSK': '3',
+                '16PSK': '4',
+                '16QAM': '4', '16APSK': '4',
+                '32QAM': '5', '32APSK': '5',
+                '64QAM': '6', '64APSK': '6',
+                '128QAM': '7',
+                '256QAM': '8',
+                '2FSK': '1', 'FSK': '1',
+                '4FSK': '2',
+                '8FSK': '3',
+                'MSK': '1', 'GMSK': '1',
+                'AM': '—', 'FM': '—',
+                'UNCLASSIFIED_AUDIO': '—',
+                'UNKNOWN': '—',
+              };
+              const mod = (result?.primary_modulation || 'UNKNOWN').toUpperCase();
+              return bpsMap[mod] ?? (mod.includes('FSK') ? '1' : mod.includes('QAM') || mod.includes('PSK') ? '?' : '—');
+            })()}
+            desc="Modulation order"
+          />
         </div>
       </div>
 

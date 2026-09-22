@@ -234,13 +234,85 @@ class DspPipeline:
         sym_rate_est = SymbolRateEstimator.estimate(proc_samples, signal_data.sample_rate)
         snr_est = SnrEstimator.estimate(proc_samples, signal_data.sample_rate)
 
+        # ── Pre-compute noise floor once for signal/noise power fields ─────────
+        _pwr_chunk = proc_samples[:min(len(proc_samples), 4096)]
+        _psd_bins = np.abs(np.fft.fftshift(np.fft.fft(_pwr_chunk))) ** 2
+        _sorted_bins = np.sort(_psd_bins)
+        _noise_mean = float(np.mean(_sorted_bins[:max(1, int(0.3 * len(_sorted_bins)))]))
+        _noise_floor_dbfs = round(10.0 * np.log10(max(1e-30, _noise_mean)), 1)
+        _signal_power_dbfs = round(float(snr_est["value"]) + _noise_floor_dbfs, 1)
+        _peak_amplitude = round(float(np.max(np.abs(proc_samples))), 4)
+        # ───────────────────────────────────────────────────────────────────────
+
         parameters_dict = {
             "sample_rate": sample_rate_est,
             "carrier_frequency": carrier_est,
             "bandwidth": bw_est,
             "symbol_rate": sym_rate_est,
-            "snr": snr_est
+            "snr": snr_est,
+
+            # ── Derived / computed fields (were N/A in the UI) ──────────────
+            "duration": {
+                "parameter": "duration",
+                "value": round(float(signal_data.duration_seconds), 4),
+                "unit": "s",
+                "confidence": 0.99,
+                "confidence_label": "High",
+                "source": "metadata",
+                "method": "samples_count / sample_rate",
+                "uncertainty": 0.0,
+                "notes": f"Capture duration of {signal_data.num_samples:,} samples at {signal_data.sample_rate/1e6:.3f} MHz."
+            },
+
+            "sample_count": {
+                "parameter": "sample_count",
+                "value": int(signal_data.num_samples),
+                "unit": "samples",
+                "confidence": 1.0,
+                "confidence_label": "High",
+                "source": "metadata",
+                "method": "direct_count",
+                "uncertainty": 0,
+                "notes": "Total IQ sample pairs ingested from file."
+            },
+
+            "noise_power": {
+                "parameter": "noise_power",
+                "value": _noise_floor_dbfs,
+                "unit": "dBFS",
+                "confidence": round(float(snr_est["confidence"]) * 0.9, 3),
+                "confidence_label": snr_est["confidence_label"],
+                "source": "dsp_estimate",
+                "method": "spectral_percentile_noise_floor_30pct",
+                "uncertainty": 1.5,
+                "notes": "Estimated from the lowest 30% of FFT power bins (out-of-band noise floor)."
+            },
+
+            "signal_power": {
+                "parameter": "signal_power",
+                "value": _signal_power_dbfs,
+                "unit": "dBFS",
+                "confidence": round(float(snr_est["confidence"]) * 0.88, 3),
+                "confidence_label": snr_est["confidence_label"],
+                "source": "dsp_estimate",
+                "method": "noise_floor_plus_snr",
+                "uncertainty": 1.5,
+                "notes": "Signal power estimated as noise floor + measured SNR."
+            },
+
+            "peak_amplitude": {
+                "parameter": "peak_amplitude",
+                "value": _peak_amplitude,
+                "unit": "",
+                "confidence": 0.99,
+                "confidence_label": "High",
+                "source": "dsp_estimate",
+                "method": "max_abs_envelope",
+                "uncertainty": 0.0001,
+                "notes": "Maximum instantaneous envelope magnitude of the preprocessed (unit-RMS normalized) signal."
+            },
         }
+
 
         st5.mark_completed(
             output_summary={k: v["value"] for k, v in parameters_dict.items()},
@@ -372,7 +444,6 @@ class DspPipeline:
         else:
             # Fallback for unclassified signals to provide SOME bitstream data
             # Use a simple zero-crossing slicer on the real part of the baseband
-            import numpy as np
             raw_bits = (np.real(proc_samples) > 0).astype(int).tolist()
             
             demod_res = {

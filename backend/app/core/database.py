@@ -1,6 +1,6 @@
 """SQLAlchemy database engine and session management."""
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from backend.app.core.config import settings
 
@@ -19,6 +19,18 @@ else:
     })
 
 engine = create_engine(settings.DATABASE_URL, **engine_kwargs)
+
+# Enable WAL mode and larger cache for SQLite — dramatically improves
+# concurrent read performance (polling + page navigation patterns).
+if settings.DATABASE_URL.startswith("sqlite"):
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_conn, _):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")   # allow reads during writes
+        cursor.execute("PRAGMA cache_size=-32768")  # 32 MB page cache
+        cursor.execute("PRAGMA synchronous=NORMAL") # safe + faster than FULL
+        cursor.execute("PRAGMA temp_store=MEMORY")  # temp tables in RAM
+        cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

@@ -63,6 +63,8 @@ const AppShell: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // listJobs is now cache-backed — if Dashboard already loaded jobs within
+    // the last 10 s this returns instantly from memory.
     listJobs()
       .then((jobs) => setRecentJobs(jobs))
       .catch(() => {});
@@ -290,7 +292,29 @@ const AppShell: React.FC = () => {
 
         {/* Page Content */}
         <main className="page-content">
-          <Suspense fallback={<div style={{ padding: '2rem', color: '#64748b' }}>Loading module...</div>}>
+          <Suspense fallback={
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              gap: '1rem',
+              color: '#334155'
+            }}>
+              <div style={{
+                width: 36,
+                height: 36,
+                border: '3px solid #1a2645',
+                borderTopColor: '#00e5ff',
+                borderRadius: '50%',
+                animation: 'spin 0.7s linear infinite'
+              }} />
+              <span style={{ fontSize: '0.75rem', color: '#475569', fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.05em' }}>
+                LOADING MODULE
+              </span>
+            </div>
+          }>
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/upload" element={<UploadPage />} />

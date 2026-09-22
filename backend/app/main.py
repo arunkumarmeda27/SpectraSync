@@ -3,6 +3,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from backend.app.api.analysis import router as analysis_router, alias_router as analysis_alias_router
 from backend.app.api.auth import router as auth_router
@@ -29,6 +30,9 @@ app = FastAPI(
     description="Automated .IQ / .WAV Signal Analysis Platform - From Raw Recordings to Meaningful Signal Insights",
     lifespan=lifespan
 )
+
+# GZip compression — large analysis JSON (20–200 KB) compresses 5–10× 
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # CORS middleware
 app.add_middleware(

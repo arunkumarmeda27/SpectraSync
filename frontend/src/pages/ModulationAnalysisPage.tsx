@@ -1,6 +1,6 @@
 // Modulation Analysis Page - Real-time modulation classification results
 import React, { useEffect, useState, useRef } from 'react';
-import { Radio, RefreshCw, AlertCircle, TrendingUp, Layers } from 'lucide-react';
+import { Radio, RefreshCw, AlertCircle, TrendingUp, Layers, Sparkles } from 'lucide-react';
 import { listJobs, getAnalysisResult, type AnalysisJob, type AnalysisResult } from '../api';
 import { useStore } from '../store';
 

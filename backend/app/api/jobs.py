@@ -30,9 +30,10 @@ def create_job(job_in: AnalysisJobCreate, db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=List[AnalysisJobOut])
-def list_jobs(db: Session = Depends(get_db)):
-    """List all analysis jobs with status, modulation, and timestamps."""
-    return db.query(AnalysisJob).order_by(AnalysisJob.id.desc()).all()
+def list_jobs(limit: int = 50, db: Session = Depends(get_db)):
+    """List analysis jobs (most recent first). Use ?limit= to fetch more (max 200)."""
+    limit = min(max(1, limit), 200)
+    return db.query(AnalysisJob).order_by(AnalysisJob.id.desc()).limit(limit).all()
 
 
 @router.get("/{job_id}", response_model=AnalysisJobOut)

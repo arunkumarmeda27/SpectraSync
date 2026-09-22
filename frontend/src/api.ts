@@ -1,9 +1,12 @@
 // API client for SpectraSync backend
 import axios from 'axios';
+import { queryCache, TTL } from './queryCache';
 
 const api = axios.create({
   baseURL: '/api',
   timeout: 120000, // 2 minutes for large file uploads
+  maxContentLength: Infinity,
+  maxBodyLength: Infinity,
 });
 
 api.interceptors.request.use((config) => {
@@ -137,50 +140,121 @@ export const uploadFile = async (file: File, onProgress?: (p: number) => void) =
   const form = new FormData();
   form.append('file', file);
   const res = await api.post<FileUploadResponse>('/files/upload', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: e => {
       if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
     },
   });
+  // Invalidate file list so next fetch shows the new file
+  queryCache.invalidate('files/list');
   return res.data.file;
 };
 
-export const listFiles = async () => (await api.get<SignalFile[]>('/files')).data;
+export const listFiles = async () => {
+  const cached = queryCache.get<SignalFile[]>('files/list');
+  if (cached) return cached;
+  const data = (await api.get<SignalFile[]>('/files')).data;
+  queryCache.set('files/list', data, TTL.FILES_LIST);
+  return data;
+};
 
-export const deleteFile = async (id: number) => (await api.delete(`/files/${id}`)).data;
+export const deleteFile = async (id: number) => {
+  const res = (await api.delete(`/files/${id}`)).data;
+  queryCache.invalidate('files/list');
+  return res;
+};
 
 // ─── Job Endpoints ────────────────────────────────────────────────────────────
 
-export const createJob = async (signalFileId: number, config?: Record<string, unknown>) =>
-  (await api.post<AnalysisJob>('/jobs', { signal_file_id: signalFileId, pipeline_config: config || {} })).data;
+export const createJob = async (signalFileId: number, config?: Record<string, unknown>) => {
+  const job = (await api.post<AnalysisJob>('/jobs', { signal_file_id: signalFileId, pipeline_config: config || {} })).data;
+  // Invalidate job list so next fetch shows the new job
+  queryCache.invalidate('jobs/list');
+  return job;
+};
 
-export const listJobs = async () => (await api.get<AnalysisJob[]>('/jobs')).data;
+export const listJobs = async () => {
+  const cached = queryCache.get<AnalysisJob[]>('jobs/list');
+  if (cached) return cached;
+  const data = (await api.get<AnalysisJob[]>('/jobs')).data;
+  queryCache.set('jobs/list', data, TTL.JOBS_LIST);
+  return data;
+};
 
-export const getJob = async (id: number) => (await api.get<AnalysisJob>(`/jobs/${id}`)).data;
+export const getJob = async (id: number) => {
+  const key = `jobs/${id}`;
+  const cached = queryCache.get<AnalysisJob>(key);
+  if (cached) return cached;
+  const data = (await api.get<AnalysisJob>(`/jobs/${id}`)).data;
+  // Only cache completed/failed jobs — active jobs must stay fresh
+  if (data.status === 'completed' || data.status === 'failed') {
+    queryCache.set(key, data, TTL.ANALYSIS_RESULT);
+  }
+  return data;
+};
 
 export const getJobStatus = async (id: number) =>
   (await api.get<{ job_id: number; status: string; progress: number; current_stage: string | null; error: string | null; completed_at: string | null }>(`/jobs/${id}/status`)).data;
 
-export const retryJob = async (id: number) => (await api.post<AnalysisJob>(`/jobs/${id}/retry`)).data;
+export const retryJob = async (id: number) => {
+  const job = (await api.post<AnalysisJob>(`/jobs/${id}/retry`)).data;
+  queryCache.invalidate('jobs/list');
+  queryCache.invalidate(`jobs/${id}`);
+  return job;
+};
 
-export const deleteJob = async (id: number) => (await api.delete(`/jobs/${id}`)).data;
+export const deleteJob = async (id: number) => {
+  const res = (await api.delete(`/jobs/${id}`)).data;
+  queryCache.invalidate('jobs/list');
+  queryCache.invalidate(`jobs/${id}`);
+  queryCache.invalidatePrefix(`analysis/${id}`);
+  return res;
+};
 
 // ─── Analysis Endpoints ───────────────────────────────────────────────────────
 
-export const getAnalysisResult = async (jobId: number) =>
-  (await api.get<AnalysisResult>(`/jobs/${jobId}/analysis`)).data;
+export const getAnalysisResult = async (jobId: number) => {
+  const key = `analysis/${jobId}/result`;
+  const cached = queryCache.get<AnalysisResult>(key);
+  if (cached) return cached;
+  const data = (await api.get<AnalysisResult>(`/jobs/${jobId}/analysis`)).data;
+  queryCache.set(key, data, TTL.ANALYSIS_RESULT);
+  return data;
+};
 
-export const getStages = async (jobId: number) =>
-  (await api.get<ProcessingStage[]>(`/jobs/${jobId}/stages`)).data;
+export const getStages = async (jobId: number) => {
+  const key = `analysis/${jobId}/stages`;
+  const cached = queryCache.get<ProcessingStage[]>(key);
+  if (cached) return cached;
+  const data = (await api.get<ProcessingStage[]>(`/jobs/${jobId}/stages`)).data;
+  queryCache.set(key, data, TTL.STAGES);
+  return data;
+};
 
-export const getBitstream = async (jobId: number) =>
-  (await api.get<BitstreamAnalysis>(`/jobs/${jobId}/bitstream`)).data;
+export const getBitstream = async (jobId: number) => {
+  const key = `analysis/${jobId}/bitstream`;
+  const cached = queryCache.get<BitstreamAnalysis>(key);
+  if (cached) return cached;
+  const data = (await api.get<BitstreamAnalysis>(`/jobs/${jobId}/bitstream`)).data;
+  queryCache.set(key, data, TTL.ANALYSIS_RESULT);
+  return data;
+};
 
 // ─── Demo Endpoints ───────────────────────────────────────────────────────────
 
-export const listDemos = async () => (await api.get<DemoSignal[]>('/demos/list')).data;
+export const listDemos = async () => {
+  const cached = queryCache.get<DemoSignal[]>('demos/list');
+  if (cached) return cached;
+  const data = (await api.get<DemoSignal[]>('/demos/list')).data;
+  queryCache.set('demos/list', data, TTL.DEMOS_LIST);
+  return data;
+};
 
-export const loadDemo = async (demoKey: string) =>
-  (await api.post<AnalysisJob>(`/demos/${demoKey}/load`)).data;
+export const loadDemo = async (demoKey: string) => {
+  const job = (await api.post<AnalysisJob>(`/demos/${demoKey}/load`)).data;
+  queryCache.invalidate('jobs/list');
+  return job;
+};
 
 // ─── Report Endpoints ─────────────────────────────────────────────────────────
 
@@ -250,6 +324,12 @@ export const logoutUser = async (): Promise<void> => {
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 
-export const getHealth = async () => (await api.get<HealthStatus>('/health')).data;
+export const getHealth = async () => {
+  const cached = queryCache.get<HealthStatus>('health');
+  if (cached) return cached;
+  const data = (await api.get<HealthStatus>('/health')).data;
+  queryCache.set('health', data, TTL.HEALTH);
+  return data;
+};
 
 export default api;
