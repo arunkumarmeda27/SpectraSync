@@ -29,6 +29,11 @@ htmlcov/
 venv/
 ENV/
 
+node_modules/
+*.db-shm
+*.db-wal
+*.db-journal
+
 # Node / Frontend
 frontend/node_modules/
 frontend/dist/

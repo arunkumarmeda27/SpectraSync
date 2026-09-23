@@ -1,14 +1,16 @@
 """Demo Mode API router for instant turnkey demonstration with golden signals."""
 
-from typing import List
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
 from backend.app.core.security import get_current_user
 from backend.app.schemas.job import AnalysisJobOut
-from backend.app.services.file_service import FileService
+from backend.app.services.file_service import FileService, _ensure_demo_library_exists
 from backend.app.services.job_service import JobService
+from processing.pipeline.pipeline import DspPipeline
 
 router = APIRouter(prefix="/demos", tags=["demos"])
 
@@ -57,11 +59,49 @@ DEMO_PRESETS = [
     }
 ]
 
+_preview_cache: Optional[Dict[str, Any]] = None
+
 
 @router.get("/list")
 def list_demo_signals():
     """List available demo signals for turnkey demonstration."""
     return DEMO_PRESETS
+
+
+@router.get("/preview")
+def get_demo_preview():
+    """Return a read-only analysis of the built-in golden QPSK signal for the public homepage."""
+    global _preview_cache
+    if _preview_cache is not None:
+        return _preview_cache
+
+    golden_dir = Path("data/golden").resolve()
+    _ensure_demo_library_exists(golden_dir)
+    signal_path = golden_dir / "golden_qpsk.iq"
+    if not signal_path.is_file():
+        raise HTTPException(status_code=404, detail="Built-in golden QPSK signal is not available")
+
+    result = DspPipeline().execute(signal_path, config={"max_samples": 100_000})
+    if result.get("status") != "completed":
+        raise HTTPException(status_code=503, detail="Built-in golden demo analysis is not available")
+
+    bit_views = result.get("bitstream", {})
+    hex_dump = bit_views.get("hex_dump", [])
+    result["primary_modulation"] = result.get("modulation", {}).get("primary_modulation", "UNKNOWN")
+    result["confidence"] = result.get("modulation", {}).get("primary_confidence", 0.0)
+    result["bitstream"] = {
+        **bit_views,
+        "length": bit_views.get("total_bits", 0),
+        "hex_stream": " ".join(row.get("hex", "") for row in hex_dump),
+        "ascii_stream": bit_views.get("ascii_preview", ""),
+        "headers": result.get("headers", []),
+        "payload_frames": result.get("payloads", []),
+        "correlation_score": result.get("correlation", {}).get("correlation_score", 0.0),
+        "bit_rate_bps": result.get("demodulation", {}).get("bit_rate_bps", 0),
+    }
+
+    _preview_cache = result
+    return result
 
 
 @router.post("/{demo_key}/load", response_model=AnalysisJobOut)

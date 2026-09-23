@@ -1,6 +1,7 @@
 // API client for SpectraSync backend
 import axios from 'axios';
 import { queryCache, TTL } from './queryCache';
+import type { FullAnalysisResult } from './types/visualizations';
 
 const api = axios.create({
   baseURL: '/api',
@@ -249,6 +250,9 @@ export const listDemos = async () => {
   queryCache.set('demos/list', data, TTL.DEMOS_LIST);
   return data;
 };
+
+export const getDemoPreview = async () =>
+  (await api.get<FullAnalysisResult>('/demos/preview')).data;
 
 export const loadDemo = async (demoKey: string) => {
   const job = (await api.post<AnalysisJob>(`/demos/${demoKey}/load`)).data;
