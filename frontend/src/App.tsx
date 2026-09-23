@@ -23,6 +23,7 @@ import { lazy, Suspense } from 'react';
 
 // Lazy Loaded Pages
 const LoginPage = lazy(() => import('./pages/LoginPage'));
+const HomePage = lazy(() => import('./pages/HomePage'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const UploadPage = lazy(() => import('./pages/UploadPage'));
 const JobQueue = lazy(() => import('./pages/JobQueue'));
@@ -316,7 +317,7 @@ const AppShell: React.FC = () => {
             </div>
           }>
             <Routes>
-              <Route path="/" element={<Dashboard />} />
+              <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/upload" element={<UploadPage />} />
               <Route path="/jobs" element={<JobQueue />} />
               <Route path="/visualizations" element={<SignalLabPage />} />
@@ -476,10 +477,36 @@ const AppShell: React.FC = () => {
   );
 };
 
+const LoadingFallback = () => (
+  <div style={{
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100vh',
+    gap: '1rem',
+    background: '#060913',
+    color: '#334155'
+  }}>
+    <div style={{
+      width: 36,
+      height: 36,
+      border: '3px solid #1a2645',
+      borderTopColor: '#00e5ff',
+      borderRadius: '50%',
+      animation: 'spin 0.7s linear infinite'
+    }} />
+    <span style={{ fontSize: '0.75rem', color: '#475569', fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.05em' }}>
+      LOADING MODULE
+    </span>
+  </div>
+);
+
 const App: React.FC = () => (
   <BrowserRouter>
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
+      <Route path="/login" element={<Suspense fallback={<LoadingFallback />}><LoginPage /></Suspense>} />
+      <Route path="/" element={<Suspense fallback={<LoadingFallback />}><HomePage /></Suspense>} />
       <Route
         path="/*"
         element={

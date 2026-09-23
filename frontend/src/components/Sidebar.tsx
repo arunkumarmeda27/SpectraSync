@@ -31,7 +31,7 @@ const navSections: NavSection[] = [
   {
     title: 'ANALYSIS',
     items: [
-      { label: 'Dashboard', icon: <LayoutDashboard size={15} />, path: '/' },
+      { label: 'Dashboard', icon: <LayoutDashboard size={15} />, path: '/dashboard' },
       { label: 'Upload & Analyze', icon: <Upload size={15} />, path: '/upload' },
       { label: 'Job History', icon: <Clock size={15} />, path: '/jobs' },
       { label: 'Signal Lab', icon: <Activity size={15} />, path: '/visualizations' },
@@ -84,9 +84,8 @@ const Sidebar: React.FC = () => {
           <div key={sec.title} style={{ marginBottom: '0.35rem' }}>
             <div className="sidebar-nav-section-title">{sec.title}</div>
             {sec.items.map((item) => {
-              const isActive = item.path === '/'
-                ? location.pathname === '/'
-                : location.pathname.startsWith(item.path);
+              const isActive = location.pathname === item.path ||
+                (item.path !== '/dashboard' && location.pathname.startsWith(item.path));
 
               return (
                 <button
