@@ -252,7 +252,7 @@ const Navbar: React.FC = () => {
           onMouseEnter={(e) => (e.currentTarget.style.color = '#f1f5f9')}
           onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
         >
-          <Github size={16} />
+          <ExternalLink size={16} />
           <span>GitHub</span>
         </a>
         <button className="btn-workstation-primary" onClick={() => navigate('/login')} style={{ fontSize: '0.78rem' }}>
@@ -335,7 +335,7 @@ const Navbar: React.FC = () => {
               style={{ color: '#94a3b8', textDecoration: 'none', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
               onClick={() => setMenuOpen(false)}
             >
-              <Github size={15} /> GitHub
+              <ExternalLink size={15} /> GitHub
             </a>
             <button
               className="btn-workstation-primary"
@@ -1639,7 +1639,7 @@ const FinalCTA: React.FC = () => {
             className="btn-workstation-secondary"
             style={{ padding: '0.7rem 1.6rem', fontSize: '0.9rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
           >
-            <Github size={16} /> View on GitHub
+            <ExternalLink size={16} /> View on GitHub
           </a>
         </div>
       </div>
